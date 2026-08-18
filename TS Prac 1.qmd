@@ -1,0 +1,139 @@
+---
+title: "TS Prac 1"
+format: html
+editor: visual
+---
+
+## 17 August 2026 — Base R `ts()` fundamentals and first look at S&P 500 data
+
+**Session/topic covered:** Base R time series objects (`ts()`, `window()`, `diff()`, `lag()`, `decompose()`), plotting with `plot.ts()`, and an initial exploratory pass on real-world daily stock price data (S&P 500 constituents, 2000–present), comparing a Base R `ts` workflow against a `tsibble`/`feasts` workflow.
+
+**What I did:** Replicated the class practical's core `ts()` examples, then applied the same techniques to a real dataset: filtered a single ticker (AAPL) and a single calendar year (2019) from a \~3 million row S&P 500 daily price dataset, and built both a Base R `ts` object (`frequency = 252`, the trading-day convention) and a `tsibble` version for exploratory analysis (`autoplot()`, `ACF()`, `STL()`).
+
+**What I learned:**
+
+- `stats::lag()` shifts the *time labels* of a series, not the underlying values; naively combining a lagged series with the original via `cbind()` silently misaligns the data. `ts.union()` aligns correctly by time index.
+- `decompose()` produces no trend estimate at the edges of a series because it relies on a centred moving average, whereas `STL()` uses Loess and does not suffer the same edge effect.
+- Daily financial data is not evenly spaced on the calendar (no weekend/holiday observations), so treating it as regular by calendar date causes problems: `ts()` with `frequency = 365` would misalign the seasonal index, and `tsibble` raises an implicit-gaps error from `ACF()` if indexed by calendar `date`. The standard fix is to index by trading-day sequence (`frequency = 252` in Base R; a `row_number()`-based index in `tsibble`) rather than calendar date.
+
+**Difficulties / open questions:** Initially indexed the `tsibble` by calendar `date`, which raised a `check_gaps()` error in `ACF()` due to weekends/holidays being read as missing observations rather than non-trading days.
+
+**Next steps:** Interpret the ACF and STL output for AAPL 2019; compare against a more volatile year (e.g. 2020) to see how STL's robustness handles the added noise; begin scoping this as one of the four substantial projects (real-world data component).
+
+```{r}
+## ============================================================
+## S&P 500 single-stock EDA: Base R ts() vs tsibble/feasts
+## Practical follow-up — Sections 1-6
+## ============================================================
+
+# ---- 0. Setup -------------------------------------------------
+pkgs <- c("readr", "dplyr", "tsibble", "feasts", "ggplot2")
+install.packages(pkgs[!pkgs %in% installed.packages()[, "Package"]])
+
+library(readr)
+library(dplyr)
+library(tsibble)
+library(feasts)
+library(ggplot2)
+
+# ---- 1. Read the raw CSV --------------------------------------
+# Update this path to wherever your file actually lives
+raw <- read_csv(
+  "sp500_stocks.csv",
+  col_types = cols(
+    date   = col_date(format = "%Y-%m-%d"),
+    open   = col_double(),
+    high   = col_double(),
+    low    = col_double(),
+    close  = col_double(),
+    volume = col_double(),
+    symbol = col_character()
+  )
+)
+
+# ---- 2. Filter to ONE symbol and ONE calendar year -------------
+TICKER <- "AAPL"     # change to "MSFT" etc if you'd rather
+YEAR   <- 2019        # pick a "normal" year to start with —
+                       # avoid 2008/2020 for now unless you WANT the volatility
+
+stock_year <- raw %>%
+  filter(symbol == TICKER,
+         date >= as.Date(paste0(YEAR, "-01-01")),
+         date <= as.Date(paste0(YEAR, "-12-31"))) %>%
+  arrange(date)
+
+cat("Rows extracted:", nrow(stock_year), "\n")
+cat("Date range:", as.character(min(stock_year$date)), "to",
+    as.character(max(stock_year$date)), "\n")
+# Sanity check: should be roughly 250-252 rows (trading days), NOT 365.
+# If it's way off, check for duplicate symbol codes or missing dates.
+
+# ---- 3. Base R ts() version -------------------------------------
+# frequency = 252 is the market convention for daily trading data
+# (NOT 365 - there are no rows for weekends/holidays, so 365 would
+#  misalign the seasonal index over time)
+stock_ts <- ts(stock_year$close, frequency = 252)
+
+plot.ts(stock_ts,
+        main = paste(TICKER, YEAR, "- Daily Close (Base R ts)"),
+        ylab = "Close Price ($)", xlab = "Trading Day",
+        col = "darkblue", lwd = 1.5)
+abline(h = mean(stock_ts), col = "grey", lty = 2)
+
+# window() practice - pull out just Q4
+q4 <- window(stock_ts, start = c(1, 190), end = c(1, 252))
+plot.ts(q4, main = paste(TICKER, YEAR, "Q4 (approx, via window())"))
+
+# diff() - day-on-day change
+plot.ts(diff(stock_ts), main = paste(TICKER, "- Day-on-day change"),
+        ylab = "Change ($)")
+abline(h = 0, col = "red", lty = 2)
+
+# ---- 4. tsibble version (handles real dates properly) -----------
+stock_tsbl <- stock_year %>%
+  select(date, close, symbol) %>%
+  mutate(trading_day = row_number()) %>%
+  as_tsibble(index = trading_day, key = symbol)
+
+# Check for implicit gaps (there WILL be some - weekends aren't gaps,
+# they're just not part of the trading calendar, but public holidays
+# sometimes show up as genuine gaps depending on data source)
+count_gaps(stock_tsbl)
+
+# Tidy plot with a real calendar x-axis
+stock_tsbl %>%
+  ggplot(aes(x = date, y = close)) +
+  geom_line(color = "steelblue") +
+  labs(title = paste(TICKER, YEAR, "- Daily Close"),
+       y = "Close Price ($)", x = "Date") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b")
+
+# ACF - autocorrelation structure
+stock_tsbl %>% ACF(close) %>% autoplot()
+
+# STL needs a period - for ~252 obs/year, weekly seasonality period = 5
+stock_tsbl %>%
+  model(STL(close ~ season(period = 5))) %>%
+  components() %>%
+  autoplot()
+
+stl_components <- stock_tsbl %>%
+  model(STL(close ~ season(period = 5))) %>%
+  components()
+
+# Reattach real calendar dates via trading_day
+date_lookup <- stock_tsbl %>% as_tibble() %>% select(trading_day, date)
+
+stl_long <- stl_components %>%
+  as_tibble() %>%
+  left_join(date_lookup, by = "trading_day") %>%
+  select(-trading_day, -symbol, -.model) %>%
+  tidyr::pivot_longer(-date, names_to = "component", values_to = "value")
+
+ggplot(stl_long, aes(x = date, y = value)) +
+  geom_line(color = "steelblue") +
+  facet_grid(component ~ ., scales = "free_y") +
+  labs(title = paste(TICKER, YEAR, "- STL Decomposition"), x = "Date", y = NULL) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b")
+
+```
