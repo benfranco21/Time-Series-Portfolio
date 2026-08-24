@@ -1,0 +1,22 @@
+---
+title: "Project 1 Summary"
+format: html
+---
+
+**Title:**
+
+**Section and topic:**
+
+**Type of project:**
+
+**Question or aim:**
+
+**Data used (and source):**
+
+**Methods used:**
+
+**Key findings:**
+
+**What I would do differently:**
+
+**Link to detailed analysis:** [project-01.qmd](project-01.qmd)

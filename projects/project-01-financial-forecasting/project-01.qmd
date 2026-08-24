@@ -1,0 +1,18 @@
+---
+title: "Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL"
+format: html
+---
+
+## EDA
+
+## Stationarity
+
+## ACF/PACF Identification
+
+## Model Fitting
+
+## Cross-Validation
+
+## Final Evaluation
+
+## Discussion

@@ -35,11 +35,12 @@ library(dplyr)
 library(tsibble)
 library(feasts)
 library(ggplot2)
+library(here)
 
 # ---- 1. Read the raw CSV --------------------------------------
 # Update this path to wherever your file actually lives
 raw <- read_csv(
-  "sp500_stocks.csv",
+  here::here("data", "sp500_stocks.csv"),
   col_types = cols(
     date   = col_date(format = "%Y-%m-%d"),
     open   = col_double(),

@@ -1,0 +1,7 @@
+---
+title: "AI Use Log"
+---
+
+| Date | Tool used | What I asked it to help with | Link to conversation | What I checked/changed myself |
+|------|-----------|-------------------------------|-----------------------|--------------------------------|
+|      |           |                               |                       |                                |

@@ -1,0 +1,19 @@
+---
+title: "Time Series Portfolio"
+---
+
+**Name:** [PLACEHOLDER — insert your name]
+
+**Student number:** [PLACEHOLDER — insert your student number]
+
+This site is a portfolio of coursework for the Time Series module, including
+journal entries, substantial projects, and section practicals.
+
+## Contents
+
+- [Journal](journal/index.qmd)
+- [Projects](projects/index.qmd)
+- [Section 1](section-1/section-1.qmd)
+- [Section 2](section-2/section-2.qmd)
+- [Reflective Commentary](reflective-commentary.qmd)
+- [AI Use Log](ai-use-log.qmd)

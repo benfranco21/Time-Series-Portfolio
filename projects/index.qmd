@@ -1,0 +1,7 @@
+---
+title: "Projects"
+---
+
+## Project 1
+
+[Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL](project-01-financial-forecasting/project-01.qmd)

@@ -1,0 +1,26 @@
+project:
+  type: website
+
+website:
+  title: "Time Series Portfolio"
+  navbar:
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "Journal"
+        href: journal/index.qmd
+      - text: "Projects"
+        href: projects/index.qmd
+      - text: "Section 1"
+        href: section-1/section-1.qmd
+      - text: "Section 2"
+        href: section-2/section-2.qmd
+      - text: "Reflective Commentary"
+        href: reflective-commentary.qmd
+      - text: "AI Use Log"
+        href: ai-use-log.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
