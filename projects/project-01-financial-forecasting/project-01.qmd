@@ -1,16 +1,475 @@
 ---
-title: "Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL"
+title: "Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL - FRNBEN003"
 format: html
 ---
+## Forecast Horizon and Justification
+
+> **Draft — placeholder to be revised once results are in.** 
+
+This project forecasts AAPL daily closing price and log returns over three
+horizons — 1 trading day, 5 trading days (one week), and 20 trading days
+(approximately one month) — rather than a single fixed horizon. This choice is
+deliberate rather than a default.
+
+Financial return series are widely documented to behave close to a random walk:
+returns show near-zero linear autocorrelation at almost any lag, meaning today's
+return carries very little information about tomorrow's direction. This has a
+direct consequence for forecast horizon selection: the *shortest* horizon is
+where an AR/MA/ARIMA model has the best chance of adding value beyond a naive
+benchmark (e.g. "tomorrow's price equals today's price"), since any genuine
+short-range dependence in the series — however weak — is most detectable and
+most exploitable at short lags. As the horizon lengthens, the series' near-random-
+walk character means forecast uncertainty compounds quickly and any linear
+structure the model captured at short lags contributes proportionally less, so
+accuracy is expected to degrade — this project treats that expected degradation
+as a finding to demonstrate empirically, not something to avoid by only
+forecasting one horizon.
+
+Practically, near-term forecasting (1-day) reflects genuine short-horizon use
+cases (e.g. next-session positioning), while the medium horizons (5-day, 20-day)
+test whether the fitted model retains any predictive value beyond the immediate
+next step, or whether its performance collapses toward a naive benchmark — a
+meaningful comparison given the efficient-market expectation that little linear
+structure should persist at longer horizons. Comparing performance (RMSE/MAE)
+across all three horizons, rather than reporting a single number, therefore
+provides a more complete and more honest picture of the model's actual
+forecasting value than a single-horizon result would.
+
+<!--
+TODO once results are in:
+- Swap in the actual finding (did accuracy degrade as expected, or was there
+  a surprise?)
+- Reference the specific AR/MA/ARIMA candidates by name/order once chosen
+- Tie the horizon discussion to both price and returns series explicitly if
+  the comparison ends up being a major part of the write-up
+-->
+
 
 ## EDA
 
+```{r setup}
+set.seed(2026)
+library(readr)
+library(dplyr)
+library(tsibble)
+library(feasts)
+library(ggplot2)
+library(here)
+```
+
+```{r load data}
+TICKER <- "AAPL"
+start_date <- as.Date("2017-01-01")
+end_date <- as.Date("2019-12-31")
+Train_frac <- 0.66
+
+raw <- read_csv(
+  here::here("data", "sp500_stocks.csv"),
+  col_types = cols(
+    date   = col_date(format = "%Y-%m-%d"),
+    open   = col_double(),
+    high   = col_double(),
+    low    = col_double(),
+    close  = col_double(),
+    volume = col_double(),
+    symbol = col_character()
+  )
+)
+
+stock_window <- raw %>%
+  filter(symbol == TICKER,
+         date >= start_date,
+         date <= end_date) %>%
+  arrange(date) %>% 
+  mutate(trading_day = row_number()) 
+
+n_total <- nrow(stock_window)
+n_train <- floor(n_total * Train_frac)
+
+train <- stock_window %>% filter(trading_day <= n_train)
+test <- stock_window %>% filter(trading_day > n_train)
+
+cat("Total obs:", n_total, "\n")
+cat("Train:", nrow(train), "|", as.character(min(train$date)), "to", as.character(max(train$date)), "\n")
+cat("Test: ", nrow(test),  "|", as.character(min(test$date)),  "to", as.character(max(test$date)), "\n")
+
+```
+
+```{r eda-plots}
+train <- train %>%
+  mutate(log_close = log(close),
+         log_return = log_close - lag(log_close))
+
+# Price Plot
+p_price <- ggplot(train, aes(x = date, y = close)) +
+    geom_line(color = "steelblue") +
+    labs(title = paste(TICKER, "- Training Set Closing Price"),
+    x = "Date", y = "Close Price ($)") +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+
+
+p_price
+
+p_returns <- ggplot(train %>% filter(!is.na(log_return)), aes(x = date, y = log_return)) +
+    geom_line(color = "darkorange", linewidth = 0.3) +
+    geom_hline(yintercept = 0, color = "grey40", linetype = "dashed") +
+    labs(title = paste(TICKER, "- Training Set Log Returns"),
+    x = "Date", y = "Log Return") +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+p_returns
+
+```
+
+```{r eda-distribution}
+returns_clean <- train %>% filter(!is.na(log_return))
+
+summary_stats <- data.frame(
+    Series = c("Close Price", "Log Return"),
+    Mean = c(mean(train$close), mean(returns_clean$log_return)),
+    SD = c(sd(train$close), sd(returns_clean$log_return)),
+    Skewness = c(
+        mean((train$close - mean(train$close))^3) / sd(train$close)^3,
+        mean((returns_clean$log_return - mean(returns_clean$log_return))^3) / sd(returns_clean$log_return)^3
+    ),
+    Kurtosis = c(
+        mean((train$close - mean(train$close))^4) / sd(train$close)^4,
+        mean((returns_clean$log_return - mean(returns_clean$log_return))^4) / sd(returns_clean$log_return)^4
+    )
+)
+
+print(summary_stats)
+
+# Histogram of returns vs normal
+Hist_returns <- ggplot(returns_clean, aes(x = log_return)) +
+    geom_histogram(aes(y = after_stat(density)), bins = 40, fill = "steelblue", alpha = 0.6) +
+    stat_function(fun = dnorm, args = list(mean = mean(returns_clean$log_return), sd = sd(returns_clean$log_return)), color = "red", linewidth = 1) +
+    labs(title = paste(TICKER, "- Log Returns Distribution vs Normal"),
+         x = "Log Return", y = "Density")
+Hist_returns
+#QQ - plot
+QQ_returns <- ggplot(returns_clean, aes(sample = log_return)) +
+    stat_qq() +
+    stat_qq_line(color = "red") +
+    labs(title = paste(TICKER, "- Log Returns Q-Q Plot"),
+         x = "Theoretical Quantiles", y = "Sample Quantiles")
+QQ_returns
+```
+
+```{r eda-acf}
+returns_vec <- returns_clean$log_return
+
+par(mfrow = c(3, 2))
+
+acf(train$close, main = "ACF: Price", lag.max = 40)
+pacf(train$close, main = "PACF: Price", lag.max = 40)
+
+acf(returns_vec, main = "ACF: Returns", lag.max = 40)
+pacf(returns_vec, main = "PACF: Returns", lag.max = 40)
+
+acf(returns_vec^2, main = "ACF: Squared Returns", lag.max = 40)
+pacf(returns_vec^2, main = "PACF: Squared Returns", lag.max = 40)
+
+par(mfrow = c(1, 1))
+
+```
+
 ## Stationarity
+```{r stationarity-test}
+library(tseries)
+
+adf_price <- adf.test(train$close)
+kpps_price <- kpss.test(train$close, null = "Level")
+
+adf_returns <- adf.test(returns_vec)
+kpps_returns <- kpss.test(returns_vec, null = "Level")
+
+stationarity_results <- data.frame(
+    Series = c("Close Price", "Close Price", "Log Return", "Log Return"),
+    Test = c("ADF", "KPSS", "ADF", "KPSS"),
+    Statistic = c(adf_price$statistic, kpps_price$statistic, adf_returns$statistic, kpps_returns$statistic),
+    P_Value = c(adf_price$p.value, kpps_price$p.value, adf_returns$p.value, kpps_returns$p.value)
+)
+
+print(stationarity_results)
+
+
+```
+
+## Stationarity
+
+Formal stationarity testing was carried out using the ADF and KPSS tests, which
+have opposite null hypotheses and are read together for a more reliable
+conclusion (ADF's null is a unit root/non-stationarity; KPSS's null is
+stationarity).
+
+| Series | Test | Statistic | p-value |
+|---|---|---|---|
+| Close Price | ADF | -0.793 | 0.962 |
+| Close Price | KPSS | 6.856 | 0.010 |
+| Log Return | ADF | -7.565 | 0.010 |
+| Log Return | KPSS | 0.551 | 0.030 |
+
+**Price**: ADF fails to reject the unit-root null (p = 0.962) and KPSS rejects
+stationarity (p = 0.010). Both tests agree: price is non-stationary. This
+confirms the visual evidence from the EDA (persistent upward trend, ACF
+decaying extremely slowly even at lag 40) and the PACF's sharp cutoff after
+lag 1, consistent with a random-walk-type process. Price requires differencing
+(d = 1) before AR/MA-type modelling.
+
+**Log returns**: ADF strongly rejects the unit-root null (p = 0.010), while
+KPSS's rejection (p = 0.030) is borderline and most plausibly attributable to
+the conditional heteroskedasticity (volatility clustering) already identified
+in the EDA — via the widened swings visible in the returns plot, excess
+kurtosis (5.92), and the more persistent squared-returns ACF — rather than
+genuine non-stationarity in the mean. KPSS is known to be sensitive to this
+kind of heteroskedasticity even when the mean is stationary. Log returns are
+therefore treated as stationary (d = 0) for AR/MA/ARMA modelling.
+
+**Decision going forward:** price will be modelled via ARIMA(p,1,q) (differencing
+handled internally); log returns will be modelled via ARMA(p,q) (already
+stationary, no further differencing). Because these two branches use different
+orders of differencing, AICc cannot be used to compare across them directly —
+only within each branch. Cross-branch comparison (price-based vs returns-based
+forecasts) will instead rely on out-of-sample RMSE from the test set, which
+remains valid regardless of differencing order.
+
+<!--
+TODO: revisit this section once order identification and model fitting are
+done - check this interpretation still holds and reference the final chosen
+models here if useful.
+-->
+
+## ACF/PACF Identification
+``` {r order-id-acf-pacf}
+par(mfrow = c(1, 2))
+acf(returns_vec, main = "ACF: Log Returns (training)", lag.max = 20)
+pacf(returns_vec, main = "PACF: Log Returns (training)", lag.max = 20)
+
+par(mfrow = c(1, 1))
+
+n <- length(returns_vec)
+ci <- 1.96/sqrt(n)
+acf_vals <- acf(returns_vec, lag.max = 20, plot = FALSE)
+pacf_vals <- pacf(returns_vec, lag.max = 20, plot = FALSE)
+
+cat("95% significance bounds: +/-", round(ci,4), "\n")
+cat("Significant ACF lags (excl. lag 0):", which(abs(acf_vals$acf[-1]) > ci), "\n")
+cat("Significant PACF lags:", which(abs(pacf_vals$acf) > ci), "\n")
+
+
+diff_price <- diff(train$close)
+
+par(mfrow = c(1, 2))
+acf(diff_price, main = "ACF: Differenced Price (training)", lag.max = 20)
+pacf(diff_price, main = "PACF: Differenced Price (training)", lag.max = 20)
+par(mfrow = c(1, 1))
+
+n_d <- length(diff_price)
+ci_d <- 1.96/sqrt(n_d)
+acf_vals_d <- acf(diff_price, lag.max = 20, plot = FALSE)
+pacf_vals_d <- pacf(diff_price, lag.max = 20, plot = FALSE)
+
+cat("95% significance bounds (diff price): +/-", round(ci_d,4), "\n")
+cat("Significant ACF lags (excl. lag 0):", which(abs(acf_vals_d$acf[-1]) > ci_d), "\n")
+cat("Significant PACF lags (diff price):", which(abs(pacf_vals_d$acf) > ci_d), "\n")
+```
 
 ## ACF/PACF Identification
 
+> **Draft — placeholder to be revised once results are in.**
+
+Order identification was carried out on the returns series only (already
+established as stationary), using ACF and PACF computed to lag 20, with
+significance assessed numerically against the ±1.96/√n critical bound rather
+than by visual inspection alone.
+
+Lags 1–6 fall comfortably within the significance bounds in both ACF and PACF,
+showing no early cutoff or gradual decay pattern — consistent with the
+near-market-efficiency expected of daily equity returns (little to no linear
+autocorrelation at short lags). Isolated significant spikes appear at lags 7,
+8, 10, and 17, flagged identically in both ACF and PACF. This does not match
+either the textbook AR signature (PACF cutoff, ACF decay) or MA signature (ACF
+cutoff, PACF decay), and is most plausibly explained by multiple-testing noise
+(with 20 lags tested at a 95% threshold, roughly 1 spurious spike is expected
+by chance) rather than genuine structure, particularly as the flagged lags
+have no clear interpretable spacing (e.g. no weekly/5-day pattern).
+
+**Decision:** given the weak and ambiguous short-lag signal, small candidate
+orders are fitted and compared via AICc and residual diagnostics, rather than
+reading a specific (p, q) directly off the plot. This is a deliberate choice
+given the data, not a shortcut — forcing a larger/more specific order onto an
+ambiguous ACF/PACF read would not be justifiable.
+
+**Candidates — Returns branch (ARMA, d = 0):**
+
+- ARIMA(0,0,0) — white noise / naive baseline
+- AR(1)
+- MA(1)
+- ARMA(1,1)
+
+These will be compared via AICc within this branch, and checked with residual
+diagnostics (Ljung-Box), before moving on to out-of-sample evaluation.
+
+**Price branch identification.** Order identification was repeated on the
+first-differenced raw close price (not log price, to keep this branch
+conceptually distinct from the returns branch rather than redundant with it -
+differencing log price would be mathematically equivalent to log returns).
+
+The differenced price ACF/PACF show the same pattern as the returns branch:
+lags 1-6 within the significance bounds in both plots, with isolated
+significant spikes at lags 7, 8, 10, and 17, flagged identically in ACF and
+PACF (95% bound = ±0.088). This near-identical structure between the two
+branches is itself a notable finding: despite deliberately using raw price
+differences rather than log returns, the two series behave very similarly.
+This is consistent with the standard result that log returns closely
+approximate percentage price changes when period-to-period moves are small
+relative to the price level, as is typical for daily equity data - the
+distinction between "dollar change" and "log/percentage change" matters much
+less when moves are a small fraction of price.
+
+**Candidates - Price branch (ARIMA, d = 1):**
+
+- ARIMA(0,1,0) - random walk baseline
+- ARIMA(1,1,0)
+- ARIMA(0,1,1)
+- ARIMA(1,1,1)
+
+Given the similarity in ACF/PACF structure to the returns branch, the same
+small-candidate rationale applies here for the same reason: no clean AR or MA
+signature to justify a larger specific order.
+
+<!--
+TODO once fitting is done (both branches):
+- Report actual AICc tables
+- Note which candidate won each branch and why
+- Revisit whether the lag 7/8/10/17 spikes deserve more discussion in light of
+  final residual diagnostics
+- Consider whether the price/returns similarity finding changes how the final
+  cross-branch RMSE comparison should be framed/discussed
+-->
+
 ## Model Fitting
 
+```{r fit-returns}
+aicc <- function(fit, n_eff){
+    k <- length(fit$coef) + 1 #+1 for sigma^2
+    fit$aic + (2 * k * (k+1))/(n_eff - k - 1)
+
+}
+
+fit_r_000 <- arima(returns_vec, order = c(0, 0, 0))
+fit_r_100 <- arima(returns_vec, order = c(1, 0, 0))
+fit_r_001 <- arima(returns_vec, order = c(0, 0, 1))
+fit_r_101 <- arima(returns_vec, order = c(1, 0, 1))
+
+n_r <- length(returns_vec)
+returns_results <- data.frame(
+    Model = c("ARIMA(0,0,0)", "AR(1)", "MA(1)", "ARMA(1,1)"),
+    AICc = c(aicc(fit_r_000, n_r), aicc(fit_r_100, n_r), aicc(fit_r_001, n_r), aicc(fit_r_101, n_r))
+)
+
+print(returns_results)
+```
+
+```{r fit-price}
+fit_p_010 <- arima(train$close, order = c(0, 1, 0))
+fit_p_110 <- arima(train$close, order = c(1, 1, 0))
+fit_p_011 <- arima(train$close, order = c(0, 1, 1))
+fit_p_111 <- arima(train$close, order = c(1, 1, 1))
+
+n_p <- length(train$close) - 1
+price_results <- data.frame(
+    Model = c("ARIMA(0,1,0)", "ARIMA(1,1,0)", "ARIMA(0,1,1)", "ARIMA(1,1,1)"),
+    AICc = c(aicc(fit_p_010, n_p), aicc(fit_p_110, n_p), aicc(fit_p_011, n_p), aicc(fit_p_111, n_p))
+)
+
+print(price_results)
+```
+
+
+```{r residual-diagnostics}
+lb_returns <- Box.test(residuals(fit_r_000), lag = 20, type = "Ljung-Box", fitdf = 0)
+lb_price <- Box.test(residuals(fit_p_010), lag = 20, type = "Ljung-Box", fitdf = 0)
+
+cat("Returns model = ARIMA(0,0,0):\n")
+print(lb_returns)
+cat("\nPrice model = ARIMA(0,1,0):\n")
+print(lb_price)
+```
+
+```{r residual-diagnostics-compare}
+lb_returns_10 <- Box.test(residuals(fit_r_000), lag = 10, type = "Ljung-Box", fitdf = 0)
+lb_returns_20 <- Box.test(residuals(fit_r_000), lag = 20, type = "Ljung-Box", fitdf = 0)
+lb_price_10   <- Box.test(residuals(fit_p_010), lag = 10, type = "Ljung-Box", fitdf = 0)
+lb_price_20   <- Box.test(residuals(fit_p_010), lag = 20, type = "Ljung-Box", fitdf = 0)
+
+ljung_box_summary <- data.frame(
+  Model = rep(c("Returns ARIMA(0,0,0)", "Price ARIMA(0,1,0)"), each = 2),
+  Lag = c(10, 20, 10, 20),
+  p_value = c(lb_returns_10$p.value, lb_returns_20$p.value,
+              lb_price_10$p.value, lb_price_20$p.value)
+)
+print(ljung_box_summary)
+
+par(mfrow = c(1, 2))
+acf(residuals(fit_r_000), main = "ACF: Returns Model Residuals", lag.max = 20)
+acf(residuals(fit_p_010), main = "ACF: Price Model Residuals", lag.max = 20)
+par(mfrow = c(1, 1))
+```
+
+```{r residual-squared-check}
+lb_returns_sq <- Box.test(residuals(fit_r_000)^2, lag = 10, type = "Ljung-Box", fitdf = 0)
+print(lb_returns_sq)
+```
+
+## Residual Diagnostics
+
+The AICc-selected models for each branch - ARIMA(0,0,0) for returns and
+ARIMA(0,1,0) for price (both random-walk-family baselines) - were checked for
+residual white noise using the Ljung-Box test at lags 10 and 20.
+
+| Model | Lag | p-value |
+|---|---|---|
+| Returns ARIMA(0,0,0) | 10 | 0.0073 |
+| Returns ARIMA(0,0,0) | 20 | 0.0183 |
+| Price ARIMA(0,1,0) | 10 | 0.0023 |
+| Price ARIMA(0,1,0) | 20 | 0.0027 |
+
+Both models formally reject the white-noise null at the 5% level, indicating
+some residual autocorrelation remains. However, the residual ACF plots show
+this structure is weak in magnitude - almost all lags sit inside the ±0.088
+significance bounds, with only isolated small spikes near lags 7, 8, 10, and
+17 (the same lags flagged during order identification), consistent with a
+marginal rather than substantial violation.
+
+A stronger diagnostic separates mean-structure from variance-structure
+violations directly: applying the Ljung-Box test to the **squared** residuals
+of the returns model gives X-squared = 74.81, p = 5.18e-12 - overwhelmingly
+stronger evidence than the raw-residual test. This confirms the residual
+failure is driven predominantly by volatility clustering (the same
+conditional heteroskedasticity identified in the EDA and flagged as a
+contributor to KPSS's borderline rejection in the Stationarity section), not
+by unmodelled linear dependence in the mean. AR/MA/ARIMA models are, by
+construction, unable to represent this kind of variance structure - they
+model only the conditional mean.
+
+**Conclusion:** the AICc-selected random-walk-family models are an honest,
+well-justified fit to the mean structure of this data (consistent with the
+near-market-efficiency expected of daily equity returns), but leave residual
+volatility clustering unexplained. This is treated as a genuine limitation of
+the AR/MA/ARIMA model class for this dataset, not a fitting error, and is
+returned to explicitly in the Discussion section - GARCH-family models are
+the natural extension for capturing this structure, primarily for improved
+prediction interval calibration rather than point-forecast accuracy, given
+the efficient-market constraint on predictability of the conditional mean
+itself.
+
+<!--
+TODO: revisit this section after CV and final evaluation - check whether the
+weak residual autocorrelation at lags 7/8/10/17 has any measurable effect on
+out-of-sample forecast accuracy at any horizon, or remains purely a
+mean-structure curiosity with no practical forecasting consequence.
+-->
 ## Cross-Validation
 
 ## Final Evaluation
