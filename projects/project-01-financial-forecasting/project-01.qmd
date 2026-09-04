@@ -4,45 +4,63 @@ format: html
 ---
 ## Forecast Horizon and Justification
 
-> **Draft — placeholder to be revised once results are in.** 
+## Forecast Horizon and Justification
 
 This project forecasts AAPL daily closing price and log returns over three
-horizons — 1 trading day, 5 trading days (one week), and 20 trading days
-(approximately one month) — rather than a single fixed horizon. This choice is
-deliberate rather than a default.
+horizons: 1 trading day, 5 trading days (one week), and 20 trading days
+(approximately one month), rather than a single fixed horizon. This choice
+was deliberate, and the results below confirm it was the right one: the three
+horizons do not tell the same story, and a single-horizon comparison would
+have missed that entirely.
 
-Financial return series are widely documented to behave close to a random walk:
-returns show near-zero linear autocorrelation at almost any lag, meaning today's
-return carries very little information about tomorrow's direction. This has a
-direct consequence for forecast horizon selection: the *shortest* horizon is
-where an AR/MA/ARIMA model has the best chance of adding value beyond a naive
-benchmark (e.g. "tomorrow's price equals today's price"), since any genuine
-short-range dependence in the series — however weak — is most detectable and
-most exploitable at short lags. As the horizon lengthens, the series' near-random-
-walk character means forecast uncertainty compounds quickly and any linear
-structure the model captured at short lags contributes proportionally less, so
-accuracy is expected to degrade — this project treats that expected degradation
-as a finding to demonstrate empirically, not something to avoid by only
-forecasting one horizon.
+Financial return series are widely documented to behave close to a random
+walk: returns show near-zero linear autocorrelation at almost any lag,
+meaning today's return carries very little information about tomorrow's
+direction. A natural expectation following from this is that any genuine
+short-range dependence a model captures would be most exploitable at short
+horizons, with relative advantage over a naive benchmark shrinking as the
+horizon lengthens and forecast uncertainty compounds. As the results below
+show, this expectation held for the price branch (accuracy degraded
+monotonically with horizon) but not for the returns branch, where MASE
+relative to naive actually *improved* with horizon, for reasons tied to how
+the naive benchmark itself behaves at longer horizons, not to the fitted
+model becoming more accurate in absolute terms. This divergence between
+branches is itself one of the project's findings, discussed below.
 
-Practically, near-term forecasting (1-day) reflects genuine short-horizon use
-cases (e.g. next-session positioning), while the medium horizons (5-day, 20-day)
-test whether the fitted model retains any predictive value beyond the immediate
-next step, or whether its performance collapses toward a naive benchmark — a
-meaningful comparison given the efficient-market expectation that little linear
-structure should persist at longer horizons. Comparing performance (RMSE/MAE)
-across all three horizons, rather than reporting a single number, therefore
-provides a more complete and more honest picture of the model's actual
-forecasting value than a single-horizon result would.
+The three horizons were compared using the AICc-selected model in each
+branch — ARIMA(0,0,0) for log returns, ARIMA(0,1,0) for price, via
+rolling-origin cross-validation on the training set and, finally, on the
+untouched test set with returns converted to an implied price forecast for a
+fair dollar-scale comparison. The pattern that emerged was more nuanced than
+simple "accuracy degrades with horizon" and differed by branch:
 
-<!--
-TODO once results are in:
-- Swap in the actual finding (did accuracy degrade as expected, or was there
-  a surprise?)
-- Reference the specific AR/MA/ARIMA candidates by name/order once chosen
-- Tie the horizon discussion to both price and returns series explicitly if
-  the comparison ends up being a major part of the write-up
--->
+- **Price branch**: RMSE grew sharply and monotonically with horizon
+  (0.68 → 1.68 → 3.87 in cross-validation; a similar pattern on the test
+  set), as expected — the model's forecast stays close to the last observed
+  price while the actual price continues to move, so error compounds with
+  time.
+- **Returns branch**: RMSE stayed roughly flat across horizons, since the
+  fitted model's forecast (essentially the mean return) does not vary with
+  horizon. MASE, however, *improved* at longer horizons (from ~0.98 at 1-day
+  to ~0.76 at 20-day) — not because the model became more accurate in
+  absolute terms, but because the one-step-ahead naive benchmark used to
+  scale MASE degrades faster with horizon than the near-constant fitted
+  forecast does.
+- **Cross-branch, test set**: converting the returns-branch forecast to an
+  implied price outperformed the price-branch forecast directly at every
+  horizon, with the margin growing from roughly 1% at 1-day to roughly 13% at 20-day,
+  consistent with geometric (percentage-based) compounding being more
+  appropriate than arithmetic compounding as horizon increases.
+
+Practically, this means near-term forecasting (1-day) is where the branches
+are most similar and where any genuine short-range predictability would be
+most exploitable, while the medium and longer horizons (5-day, 20-day) are
+where the choice of modelling scale, price versus returns, has the largest
+practical impact on forecast accuracy, and where the models' shared inability
+to capture volatility clustering (see Residual Diagnostics and Discussion)
+is most consequential for real forecast uncertainty. Comparing all three
+horizons, rather than reporting a single number, was therefore essential to
+surfacing this finding rather than obscuring it.
 
 
 ## EDA
@@ -274,9 +292,8 @@ cat("Significant ACF lags (excl. lag 0):", which(abs(acf_vals_d$acf[-1]) > ci_d)
 cat("Significant PACF lags (diff price):", which(abs(pacf_vals_d$acf) > ci_d), "\n")
 ```
 
-## ACF/PACF Identification
 
-> **Draft — placeholder to be revised once results are in.**
+## ACF/PACF Identification
 
 Order identification was carried out on the returns series only (already
 established as stationary), using ACF and PACF computed to lag 20, with
@@ -284,7 +301,7 @@ significance assessed numerically against the ±1.96/√n critical bound rather
 than by visual inspection alone.
 
 Lags 1–6 fall comfortably within the significance bounds in both ACF and PACF,
-showing no early cutoff or gradual decay pattern — consistent with the
+showing no early cutoff or gradual decay pattern, consistent with the
 near-market-efficiency expected of daily equity returns (little to no linear
 autocorrelation at short lags). Isolated significant spikes appear at lags 7,
 8, 10, and 17, flagged identically in both ACF and PACF. This does not match
@@ -292,23 +309,33 @@ either the textbook AR signature (PACF cutoff, ACF decay) or MA signature (ACF
 cutoff, PACF decay), and is most plausibly explained by multiple-testing noise
 (with 20 lags tested at a 95% threshold, roughly 1 spurious spike is expected
 by chance) rather than genuine structure, particularly as the flagged lags
-have no clear interpretable spacing (e.g. no weekly/5-day pattern).
+have no clear interpretable spacing (e.g. no weekly/5-day pattern). This
+reading was later corroborated by the residual diagnostics: the raw-residual
+Ljung-Box test was only borderline significant (driven by these same lags),
+while the squared-residual test was overwhelming (p = 5.18e-12), indicating
+the mean-structure signal at these lags is genuinely weak, and the dominant
+source of model inadequacy is volatility clustering rather than an
+unmodelled AR/MA component at lags 7/8/10/17.
 
 **Decision:** given the weak and ambiguous short-lag signal, small candidate
 orders are fitted and compared via AICc and residual diagnostics, rather than
 reading a specific (p, q) directly off the plot. This is a deliberate choice
-given the data, not a shortcut — forcing a larger/more specific order onto an
+given the data, not a shortcut, forcing a larger/more specific order onto an
 ambiguous ACF/PACF read would not be justifiable.
 
 **Candidates — Returns branch (ARMA, d = 0):**
 
-- ARIMA(0,0,0) — white noise / naive baseline
-- AR(1)
-- MA(1)
-- ARMA(1,1)
+| Model | AICc |
+|---|---|
+| **ARIMA(0,0,0)** | **-2772.501** |
+| AR(1) | -2772.305 |
+| MA(1) | -2772.420 |
+| ARMA(1,1) | -2770.538 |
 
-These will be compared via AICc within this branch, and checked with residual
-diagnostics (Ljung-Box), before moving on to out-of-sample evaluation.
+ARIMA(0,0,0) has the lowest (best) AICc, though the margin over AR(1) and
+MA(1) is small (< 0.2) and not practically distinguishable; ARMA(1,1) is the
+clearest laggard (~2 points worse). ARIMA(0,0,0) was carried forward as the
+returns-branch model for cross-validation and final evaluation.
 
 **Price branch identification.** Order identification was repeated on the
 first-differenced raw close price (not log price, to keep this branch
@@ -323,30 +350,30 @@ branches is itself a notable finding: despite deliberately using raw price
 differences rather than log returns, the two series behave very similarly.
 This is consistent with the standard result that log returns closely
 approximate percentage price changes when period-to-period moves are small
-relative to the price level, as is typical for daily equity data - the
+relative to the price level, as is typical for daily equity data, the
 distinction between "dollar change" and "log/percentage change" matters much
-less when moves are a small fraction of price.
+less when moves are a small fraction of price. Despite this structural
+similarity, the two branches' final test-set forecasting performance
+diverged materially (see Final Evaluation and Discussion), the resemblance
+in ACF/PACF shape does not imply the two branches forecast equally well once
+compounded over multiple steps.
 
 **Candidates - Price branch (ARIMA, d = 1):**
 
-- ARIMA(0,1,0) - random walk baseline
-- ARIMA(1,1,0)
-- ARIMA(0,1,1)
-- ARIMA(1,1,1)
+| Model | AICc |
+|---|---|
+| **ARIMA(0,1,0)** | **937.003** |
+| ARIMA(0,1,1) | 937.433 |
+| ARIMA(1,1,0) | 937.580 |
+| ARIMA(1,1,1) | 939.108 |
 
-Given the similarity in ACF/PACF structure to the returns branch, the same
-small-candidate rationale applies here for the same reason: no clean AR or MA
-signature to justify a larger specific order.
-
-<!--
-TODO once fitting is done (both branches):
-- Report actual AICc tables
-- Note which candidate won each branch and why
-- Revisit whether the lag 7/8/10/17 spikes deserve more discussion in light of
-  final residual diagnostics
-- Consider whether the price/returns similarity finding changes how the final
-  cross-branch RMSE comparison should be framed/discussed
--->
+As with the returns branch, ARIMA(0,1,0) wins by a small margin over the
+single-parameter alternatives, with ARIMA(1,1,1) the clearest laggard.
+ARIMA(0,1,0) was carried forward as the price-branch model for
+cross-validation and final evaluation. Note that AICc values are not
+comparable between the returns and price tables above, as the two branches
+differ in order of differencing (d); cross-branch comparison was instead
+carried out via out-of-sample RMSE in the Final Evaluation section.
 
 ## Model Fitting
 
@@ -424,8 +451,8 @@ print(lb_returns_sq)
 
 ## Residual Diagnostics
 
-The AICc-selected models for each branch - ARIMA(0,0,0) for returns and
-ARIMA(0,1,0) for price (both random-walk-family baselines) - were checked for
+The AICc-selected models for each branch, ARIMA(0,0,0) for returns and
+ARIMA(0,1,0) for price (both random-walk-family baselines), were checked for
 residual white noise using the Ljung-Box test at lags 10 and 20.
 
 | Model | Lag | p-value |
@@ -437,20 +464,20 @@ residual white noise using the Ljung-Box test at lags 10 and 20.
 
 Both models formally reject the white-noise null at the 5% level, indicating
 some residual autocorrelation remains. However, the residual ACF plots show
-this structure is weak in magnitude - almost all lags sit inside the ±0.088
+this structure is weak in magnitude, almost all lags sit inside the ±0.088
 significance bounds, with only isolated small spikes near lags 7, 8, 10, and
 17 (the same lags flagged during order identification), consistent with a
 marginal rather than substantial violation.
 
 A stronger diagnostic separates mean-structure from variance-structure
 violations directly: applying the Ljung-Box test to the **squared** residuals
-of the returns model gives X-squared = 74.81, p = 5.18e-12 - overwhelmingly
+of the returns model gives X-squared = 74.81, p = 5.18e-12, overwhelmingly
 stronger evidence than the raw-residual test. This confirms the residual
 failure is driven predominantly by volatility clustering (the same
 conditional heteroskedasticity identified in the EDA and flagged as a
 contributor to KPSS's borderline rejection in the Stationarity section), not
 by unmodelled linear dependence in the mean. AR/MA/ARIMA models are, by
-construction, unable to represent this kind of variance structure - they
+construction, unable to represent this kind of variance structure, they
 model only the conditional mean.
 
 **Conclusion:** the AICc-selected random-walk-family models are an honest,
@@ -458,20 +485,183 @@ well-justified fit to the mean structure of this data (consistent with the
 near-market-efficiency expected of daily equity returns), but leave residual
 volatility clustering unexplained. This is treated as a genuine limitation of
 the AR/MA/ARIMA model class for this dataset, not a fitting error, and is
-returned to explicitly in the Discussion section - GARCH-family models are
+returned to explicitly in the Discussion section, GARCH-family models are
 the natural extension for capturing this structure, primarily for improved
 prediction interval calibration rather than point-forecast accuracy, given
 the efficient-market constraint on predictability of the conditional mean
 itself.
 
-<!--
-TODO: revisit this section after CV and final evaluation - check whether the
-weak residual autocorrelation at lags 7/8/10/17 has any measurable effect on
-out-of-sample forecast accuracy at any horizon, or remains purely a
-mean-structure curiosity with no practical forecasting consequence.
--->
+The cross-validation and final evaluation results (see those sections)
+provide indirect evidence on whether the weak residual autocorrelation at
+lags 7, 8, 10, and 17 carries any practical forecasting consequence: AR(1),
+MA(1), and ARMA(1,1), the candidates best placed to capture any leftover
+short-lag mean structure, performed no better than the ARIMA(0,0,0)/
+ARIMA(0,1,0) baselines in either cross-validation or on the test set, in
+either branch. No model specifically targeting lags 7/8/10/17 was fitted, as
+doing so without a principled justification would risk fitting noise rather
+than genuine structure (see ACF/PACF Identification). Taken together, this
+supports treating the residual autocorrelation as a marginal, low-consequence
+curiosity for point forecasting, consistent with the interpretation above
+that volatility clustering, not unmodelled mean structure, is the
+substantive limitation of this model class for this dataset.
 ## Cross-Validation
+
+```{r cv-setup}
+source(here::here("projects", "project-01-financial-forecasting", "R", "cv_functions.R"))
+
+```
+
+```{r cv-returns}
+
+returns_orders <- list("ARIMA(0,0,0)" = c(0,0,0), "AR(1)" = c(1,0,0),
+                        "MA(1)" = c(0,0,1), "ARMA(1,1)" = c(1,0,1))
+
+cv_returns_results <- data.frame()
+for (nm in names(returns_orders)) {
+  res <- rolling_cv(returns_vec, returns_orders[[nm]], horizons = c(1,5,20),
+                     initial = 300, step = 5)
+  res$Model <- nm
+  cv_returns_results <- rbind(cv_returns_results, res)
+}
+print(cv_returns_results[, c("Model","Horizon","RMSE","MAE","MASE","n_origins")])
+
+
+cat("SD of returns_vec:", sd(returns_vec), "\n")
+cat("Q (mean abs diff of returns_vec):", mean(abs(diff(returns_vec))), "\n")
+cat("Summary of returns_vec:\n")
+print(summary(returns_vec))
+cat("Summary of diff(returns_vec):\n")
+print(summary(diff(returns_vec)))
+```
+
+
+``` {r cv-price}
+
+price_orders <- list("ARIMA(0,1,0)" = c(0,1,0), "ARIMA(1,1,0)" = c(1,1,0),
+                     "ARIMA(0,1,1)" = c(0,1,1), "ARIMA(1,1,1)" = c(1,1,1))
+
+cv_price_results <- data.frame()
+for (nm in names(price_orders)) {
+  res <- rolling_cv(train$close, price_orders[[nm]], horizons = c(1,5,20),
+                     initial = 300, step = 5)
+  res$Model <- nm
+  cv_price_results <- rbind(cv_price_results, res)
+}
+print(cv_price_results[, c("Model","Horizon","RMSE","MAE","MASE","n_origins")])
+
+```
 
 ## Final Evaluation
 
+```{r final-eval-setup}
+source(here::here("projects", "project-01-financial-forecasting", "R", "forecast_functions.R"))
+
+full_data <- stock_window
+full_price <- full_data$close
+full_returns <- c(NA, diff(log(full_data$close)))
+
+test_start <- nrow(train)
+test_end <- nrow(full_data)
+
+```
+
+``` {r final-eval-run}
+final_price_results <- final_eval_price(full_price, order = c(0,1,0), horizons = c(1,5,20), test_start = test_start, test_end = test_end)
+final_price_results$Branch <- "Price ARIMA(0,1,0)"
+
+final_returns_results <- final_eval_returns_as_price(full_returns,full_price, order = c(0,0,0), horizons = c(1,5,20), test_start = test_start, test_end = test_end)
+final_returns_results$Branch <- "Returns ARIMA(0,0,0)"
+
+final_comparison <- rbind(final_price_results, final_returns_results)
+print(final_comparison[, c("Branch","Horizon","RMSE","n_origins")])
+```
+
 ## Discussion
+
+### Summary of findings
+
+This project set out to compare AR, MA, and ARIMA models for forecasting AAPL
+daily closing prices, modelled both directly (price, ARIMA branch, d = 1) and
+via log returns (ARMA branch, d = 0). Every stage of the analysis pointed in
+the same direction.
+
+The EDA identified a clear upward price trend interrupted by a sharp late-2018
+decline, near-zero linear autocorrelation in returns, and visually apparent
+volatility clustering concentrated around that decline. Formal stationarity
+testing confirmed price is non-stationary (ADF/KPSS in agreement) and returns
+are stationary in the mean, with KPSS's borderline rejection attributed to
+conditional heteroskedasticity rather than a genuine unit root. Order
+identification via ACF/PACF showed no clean AR or MA signature at short lags
+in either branch - isolated spikes at lags 7, 8, 10, and 17 were judged more
+consistent with multiple-testing noise than genuine structure, given their
+lack of interpretable spacing.
+
+This ambiguity was confirmed empirically: AICc favoured the simplest possible
+model in both branches, ARIMA(0,0,0) for returns and ARIMA(0,1,0) for price, with AR(1), MA(1), and ARMA(1,1)-type extensions offering no meaningful
+improvement in either branch. Rolling-origin cross-validation on the training
+set reproduced this ranking out-of-sample, with MASE below 1 (returns) and
+above 1 (price) across all horizons tested. On the untouched test set, the
+returns-branch forecast, converted to an implied price via geometric
+compounding for direct dollar-scale comparability - outperformed the
+price-branch forecast at every horizon, with the margin growing from ~1% at
+1-day to ~13% at 20-day, consistent with geometric random-walk compounding
+being more appropriate than an arithmetic one over longer horizons.
+
+Residual diagnostics provided the clearest explanation for why no candidate
+model performed strongly in an absolute sense. Ljung-Box tests on the raw
+residuals showed only a weak, borderline violation of white noise, but the
+same test applied to **squared** residuals was overwhelming
+(X-squared = 74.81, p = 5.18e-12), confirming that the volatility clustering
+identified in the EDA persists, unmodelled, in the fitted models' residuals.
+This is not a fitting error: AR/MA/ARIMA models are constructed to capture
+linear dependence in the conditional mean only, and have no mechanism to
+represent time-varying variance.
+
+### What this means
+
+Taken together, these results are best read not as a failed search for a
+good forecasting model, but as empirical evidence that AAPL's daily returns
+over this window behave close to the near-market-efficient random walk that
+financial theory predicts: little linear structure exists in the mean for a
+model of this class to find, and the AICc/CV/test-set procedures correctly
+converged on the simplest model available rather than overfitting to noise
+in pursuit of a more impressive-looking result. The one place a clear,
+well-evidenced departure from "nothing to model" was found, volatility
+clustering, is precisely the structure this model class cannot represent.
+
+### Limitations
+
+- The price-branch and returns-branch winning models are not fully
+  equivalent despite their conceptual similarity: ARIMA(0,0,0) on returns
+  implicitly estimates a mean/drift term that compounds forward under the
+  implied-price conversion, whereas ARIMA(0,1,0) on price is fit without
+  drift by default. Part of the returns branch's test-set advantage may
+  therefore reflect this drift rather than the arithmetic-vs-geometric
+  distinction alone; a drift-included price model was identified as a useful
+  follow-up check but not yet completed.
+- Small-sample convergence warnings occurred for ARMA(1,1) at early
+  cross-validation origins with limited training data; affected origins were
+  excluded from that model's error calculation rather than treated as fatal.
+- The 3-year training/test window (2017-2019) does not include the training
+  set volatility regime experienced in the test period; results may not
+  generalise to periods of substantially different market conditions.
+
+### Future work
+
+The residual diagnostics motivate a direct and well-justified next step:
+GARCH-family models, planned as a subsequent project in this portfolio.
+Unlike the models tested here, GARCH explicitly models time-varying
+conditional variance, directly targeting the volatility clustering this
+project identified but could not represent. Given the efficient-market
+constraint already evident in this project's point-forecast results, GARCH
+is expected to offer limited improvement in point-forecast accuracy, but
+should meaningfully improve prediction interval calibration - narrow,
+constant-width intervals from this project's ARIMA-family models are likely
+to understate real forecast uncertainty, particularly around volatile
+periods such as the Q4 2018 decline identified in the EDA.
+
+<!--
+TODO: revisit once the drift-included price model (ARIMA(0,1,0) with
+include.mean/drift) is fitted, to confirm whether the returns-branch
+advantage survives after controlling for drift.
+-->

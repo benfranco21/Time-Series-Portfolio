@@ -2,12 +2,13 @@
 title: "Time Series Portfolio"
 ---
 
-**Name:** [PLACEHOLDER — insert your name]
+**Name:** Benjamin Franco
 
-**Student number:** [PLACEHOLDER — insert your student number]
+**Student number:** FRNBEN003
 
-This site is a portfolio of coursework for the Time Series module, including
-journal entries, substantial projects, and section practicals.
+This site contains my portfolio for Time Series Analysis.
+
+Below are the links to the different sections of the portfolio. With the aim to be able to step through the portfolio and follow along the work I have put togethere to show my understading of the concepts and techniques covered in this course.
 
 ## Contents
 
