@@ -4,6 +4,8 @@ format: html
 editor: visual
 ---
 
+[Worked Tutorial: Fitting GARCH Models](garch-tutorial.qmd)
+
 ## 17 August 2026 — Base R `ts()` fundamentals and first look at S&P 500 data
 
 **Session/topic covered:** Base R time series objects (`ts()`, `window()`, `diff()`, `lag()`, `decompose()`), plotting with `plot.ts()`, and an initial exploratory pass on real-world daily stock price data (S&P 500 constituents, 2000–present), comparing a Base R `ts` workflow against a `tsibble`/`feasts` workflow.
