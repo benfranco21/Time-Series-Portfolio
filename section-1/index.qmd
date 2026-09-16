@@ -1,0 +1,10 @@
+---
+title: "Section 1"
+---
+
+This section covers Base R and tidyverse time series fundamentals, plus a worked tutorial on GARCH models.
+
+## Contents
+
+- [Base R ts() Fundamentals](section-1.qmd)
+- [Worked Tutorial: Fitting GARCH Models](garch-tutorial.qmd)

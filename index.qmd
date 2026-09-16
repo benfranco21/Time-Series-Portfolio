@@ -14,7 +14,7 @@ Below are the links to the different sections of the portfolio. With the aim to 
 
 - [Journal](journal/index.qmd)
 - [Projects](projects/index.qmd)
-- [Section 1](section-1/section-1.qmd)
+- [Section 1](section-1/index.qmd)
 - [Section 2](section-2/section-2.qmd)
 - [Reflective Commentary](reflective-commentary.qmd)
 - [AI Use Log](ai-use-log.qmd)
