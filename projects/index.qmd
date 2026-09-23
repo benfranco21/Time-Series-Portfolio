@@ -5,3 +5,7 @@ title: "Projects"
 ## Project 1
 
 [Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL](project-01-financial-forecasting/project-01.qmd)
+
+## Project 2
+
+[GARCH Volatility Modelling: Extending the AAPL Forecasting Analysis](project-02-garch-volatility/project-02.qmd)

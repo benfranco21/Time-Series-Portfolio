@@ -1,0 +1,218 @@
+---
+title: "GARCH Volatility Modelling: Extending the AAPL Forecasting Analysis"
+format: html
+---
+
+## Define the Series
+```{r setup}
+set.seed(2026)
+library(readr)
+library(dplyr)
+library(rugarch)
+library(FinTS)
+library(here)
+
+TICKER <- "AAPL"    
+Start_date <- as.Date("2017-01-01")
+End_date <- as.Date("2019-12-31")
+train_frac <- 0.66
+
+raw <- read_csv(
+  here::here("data", "sp500_stocks.csv"),
+  col_types = cols(date = col_date(format = "%Y-%m-%d"), symbol = col_character())
+)
+
+stock_window <- raw %>%
+  filter(symbol == TICKER, date >= Start_date, date <= End_date) %>%
+  arrange(date) %>%
+  mutate(trading_day = row_number(),
+         log_close = log(close),
+         log_return = log_close - lag(log_close))
+
+
+n_total <- nrow(stock_window)
+n_train <- floor(n_total * train_frac)
+
+train <- stock_window[1:n_train, ]
+test <- stock_window[(n_train + 1):n_total, ]
+
+returns_vec <- train$log_return[!is.na(train$log_return)]
+
+
+```
+
+## Explore (Recap)
+This project uses the same AAPL log returns series established and explored in detail in Project 1 Financial Forecasting using ARIMA. Key findings from that EDA that are relevent to this porject include: log returns show near-zero linear autocorrelation but substantial excess kurtosis (5.92 vs. 3 for a normal distribution) and visually apparent volatility clustering, concentrated particularly around the Q4 2018 price drop. This motivated Project 1's residual diagnostics, which confirmed the volatitlity clustering statistically (squared-residual Ljung-Box, p = 5.18e-12) but found no mechanism within the AR/MA/ARIMA model class to represent it, giving us the starting point for this project: GARCH volatility modelling.
+
+```{r explore-recap}
+plot(returns_vec, type = "l", col = "darkred",
+     main = paste(TICKER, "- Training Set Log Returns"),
+     xlab = "Trading Day", ylab = "Log Return")
+abline(h = 0, lty = 2, col = "grey40")
+```
+
+## Specify the Mean
+```{r joint mean comparison}
+mean_orders <- list("(0,0)" = c(0,0),
+                    "(1,0)" = c(1,0),
+                    "(0,1)" = c(0,1),
+                    "(1,1)" = c(1,1))
+
+joint_results <- data.frame()
+
+for (nm in names(mean_orders)){
+    spec <- ugarchspec(
+        variance.model = list(model = "sGARCH", garchOrder = c(1,1)), mean.model = list(armaOrder = mean_orders[[nm]], include.mean = TRUE), distribution.model = "std"
+        )
+    
+    fit <- tryCatch(ugarchfit(spec = spec, data = returns_vec, solver = "hybrid"), error = function(e) NULL)
+    if (is.null(fit)) next
+  ic <- infocriteria(fit)
+  joint_results <- rbind(joint_results, data.frame(
+    MeanOrder = nm, AIC = ic["Akaike",], BIC = ic["Bayes",]
+  ))
+
+
+}
+
+print(joint_results)
+
+```
+
+
+## Obtain Innovations
+
+```{r obtain innovations}
+fit <- arima(returns_vec, order = c(0,0,0))
+innovations <- residuals(fit)
+
+cat("Mean estimate:", coef(fit), "\n")
+cat("Number of innovations:", length(innovations), "\n")
+```
+
+## Check for ARCH Effects
+
+```{r arch effects test}
+arch_results <- ArchTest(innovations, lags = 12)
+print(arch_results)
+
+lb_squared <- Box.test(innovations^2, lag = 10, type = "Ljung-Box")
+print(lb_squared)
+```
+
+## Specify the Variance
+
+```{r specify variance}
+arch1 <- ugarchspec(
+    variance.model = list(model = "sGARCH", garchOrder = c(1,0)),
+    mean.model = list(armaOrder = c(0,0), include.mean = T), 
+    distribution.model = "std"
+    )
+
+garch11 <- ugarchspec(
+    variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+    mean.model = list(armaOrder = c(0,0), include.mean = T), 
+    distribution.model = "std"
+    )
+
+fit_arch1 <- ugarchfit(spec = arch1, data = returns_vec, solver = "hybrid")
+fit_garch11 <- ugarchfit(spec = garch11, data = returns_vec, solver = "hybrid")
+
+show(fit_arch1)
+show(fit_garch11)
+```
+
+## Estimate
+
+### "optimal parameters" table goes here and interpretation of the results
+
+## Diagnose
+
+### exploring all tests performed and there results, including Ljung-Box, ARCH-LM, and residual diagnostics (interpretation of the results)
+
+
+## Compare Models (Part A: Residual Problem / Part B: Interval Calibration)
+
+```{r compare models}
+garch11_residuals <- residuals(fit_garch11, standardize = TRUE)
+
+lb_before <- Box.test(innovations^2, lag = 10, type = "Ljung-Box")
+lb_after <- Box.test(garch11_residuals^2, lag = 10, type = "Ljung-Box")
+
+comparison <- data.frame(
+    Model = c("ARIMA(0,0,0) only (Project 1)", "GARCH(1,1) standardized residuals"),
+    X_squared = c(lb_before$statistic, lb_after$statistic),
+    p_value = c(lb_before$p.value, lb_after$p.value)
+)
+
+print(comparison)
+```
+
+```{r coverage-test}
+returns_full <- stock_window$log_return[-1]
+n_train <- length(returns_vec)
+n_total <- length(returns_full)
+
+origins <- seq(n_train, n_total - 1, by = 10)
+
+results_coverage <- data.frame()
+
+for (i in origins) {
+    data_sub <- returns_full[1:i]
+    actual <- returns_full[i + 1]
+
+    fit_a <- tryCatch(arima(data_sub, order = c(0,0,0)), error = function(e) NULL)
+    if (!is.null(fit_a)) {
+        fc_a <- predict(fit_a, n.ahead = 1)
+        arima_lower <- fc_a$pred[1] - 1.96 * fc_a$se[1]
+        arima_upper <- fc_a$pred[1] + 1.96 * fc_a$se[1]
+        arima_covered <- actual >= arima_lower & actual <= arima_upper
+        arima_width <- arima_upper - arima_lower
+    } else {
+        arima_covered <- NA
+        arima_width <- NA
+    }
+
+    spec_i <- ugarchspec(
+        variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+        mean.model = list(armaOrder = c(0,0), include.mean = TRUE),
+        distribution.model = "std"
+    )
+    fit_g <- tryCatch(ugarchfit(spec = spec_i, data = data_sub, solver = "hybrid"), error = function(e) NULL)
+
+    if (!is.null(fit_g)) {
+        fc_g <- ugarchforecast(fit_g, n.ahead = 1)
+        g_mean <- as.numeric(fitted(fc_g))
+        g_sigma <- as.numeric(sigma(fc_g))
+        df_t <- coef(fit_g)["shape"]
+        tq <- qt(0.975, df = df_t)
+        garch_lower <- g_mean - tq * g_sigma
+        garch_upper <- g_mean + tq * g_sigma
+        garch_covered <- actual >= garch_lower & actual <= garch_upper
+        garch_width <- garch_upper - garch_lower
+    } else {
+        garch_covered <- NA
+        garch_width <- NA
+    }
+
+    results_coverage <- rbind(results_coverage, data.frame(
+        origin = i, arima_covered, arima_width, garch_covered, garch_width
+    ))
+}
+
+coverage_summary <- data.frame(
+    Model = c("ARIMA(0,0,0)", "GARCH(1,1)"),
+    Coverage = c(mean(results_coverage$arima_covered, na.rm = TRUE),
+                 mean(results_coverage$garch_covered, na.rm = TRUE)),
+    Avg_Width = c(mean(results_coverage$arima_width, na.rm = TRUE),
+                  mean(results_coverage$garch_width, na.rm = TRUE)),
+    n_origins = c(sum(!is.na(results_coverage$arima_covered)),
+                  sum(!is.na(results_coverage$garch_covered)))
+)
+print(coverage_summary)
+```
+
+
+## Forecast and Report
+
+## Discussion
