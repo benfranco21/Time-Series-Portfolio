@@ -358,6 +358,17 @@ comparison <- data.frame(
 print(comparison)
 ```
 
+
+Part A: does GARCH fix the residual problem from Project 1?
+
+In Project 1 the residuals of the ARIMA(0,0,0) model failed the Ljung-Box test once squared, showing that the size of the errors was still correlated over time. This was confirmed again in Check for ARCH Effects. Part A tests whether GARCH(1,1) removes that problem, using the same test at the same lag (10) on two sets of residuals: the raw innovations of the mean-only model, squared, and the GARCH(1,1) standardised residuals, squared.
+
+Residuals	Ljung-Box statistic (lag 10)	p-value
+ARIMA(0,0,0), squared	74.81	5.18e-12
+GARCH(1,1), standardised and squared	3.29	0.97
+
+The statistic falls from 74.81 to 3.29 and the p-value moves from effectively zero to 0.97, so no autocorrelation is left in the squared residuals after standardising. The GARCH variance equation has absorbed the volatility clustering that the ARIMA model could not represent. This is an in-sample result: the model was fitted to these same data, so it shows the model does what it is designed to do, and does not by itself show that it forecasts better. That question is tested out of sample in the next section (Part B).
+
 ### Part B
 
 ```{r coverage-test}
@@ -430,6 +441,15 @@ coverage_summary <- data.frame(
 print(coverage_summary)
 ```
 
+Part B: are the prediction intervals better calibrated?
+
+One-day-ahead 95% prediction intervals were built for every day in the test period. At each origin both models were refitted using only the data available up to that day, the interval for the next day was computed, and the actual return was checked against it. This gave 257 origins. The ARIMA interval uses the fitted constant standard deviation with a normal quantile. The GARCH interval uses that day's forecast standard deviation with the standardised Student-t quantile, matching the distribution the model was fitted with. A well-calibrated 95% interval contains the actual return about 95% of the time.
+
+Model	Coverage	Average width	Origins
+ARIMA(0,0,0)	94.16%	0.0618	257
+GARCH(1,1)	94.94%	0.0682	257
+
+Both models are close to the 95% target. With 257 origins the standard error of a coverage estimate near 95% is about 1.4 percentage points, so the 0.7 point gap between them is within sampling noise. On overall coverage alone neither model is better. GARCH's intervals are about 10% wider on average, so it is not achieving similar coverage with a narrower interval.
 
 ```{r conditional coverage}
 
@@ -447,12 +467,20 @@ print(cond_coverage)
 
 ```
 
+Average coverage can hide a regime-dependent difference, since ARIMA's interval has the same width every day regardless of conditions. To check this the origins were split into two halves by GARCH's own forecast volatility for the day, known before the return is observed, and coverage was computed in each half.
+
+Predicted volatility	ARIMA	GARCH	Origins
+Low	97.67%	96.12%	129
+High	90.63%	93.75%	128
+
+ARIMA covers too often on calm days and too rarely on volatile days, while GARCH sits closer to 95% in both halves. Each cell has about 128 observations, giving a standard error of roughly 2 percentage points, so the within-cell gap between models is of a similar size to its own uncertainty. The volatile days come mostly from one episode, the weeks after the late 2018 sell-off, and volatility clusters, so those days are not independent observations. There is only one test year. The result is consistent with GARCH's intervals adapting to changing volatility at the one-day horizon, without being strong enough on its own to establish it definitively.
+
 
 ```{r interval plot}
 plot_df <- results_coverage
 plot_df$date <- stock_window$date[-1][plot_df$origin +1]
 
-int_plot <- ggplot(plot_df, aes(x = date)) +
+ggplot(plot_df, aes(x = date)) +
     geom_ribbon(aes(ymin = garch_lower, ymax = garch_upper), fill = "steelblue", alpha = 0.3) + 
     geom_line(aes(y = arima_lower), colour = "darkred", linetype = "dashed") +
     geom_line(aes(y = arima_upper), colour = "darkred", linetype = "dashed") +
@@ -464,101 +492,7 @@ int_plot <- ggplot(plot_df, aes(x = date)) +
 
 ```
 
-## Forecast and Report
-
-### Part A
-
-```{r garch parameters}
-
-cf <- coef(fit_garch11)
-omega <- as.numeric(cf["omega"])
-alpha1 <- as.numeric(cf["alpha1"])
-beta1 <- as.numeric(cf["beta1"])
-
-persistence <- alpha1 + beta1
-half_life <- log(0.5) / log(persistence)
-long_run_var <- omega / (1 - persistence)
-
-print(c(persistence = persistence, half_life_days = half_life, long_run_sd = sqrt(long_run_var), sample_sd = sd(returns_vec)))
-
-
-```
-
-
-### Part B
-
-```{r garch forecast path}
-
-fc_path <- ugarchforecast(fit_garch11, n.ahead = 20)
-sigma_path <- as.numeric(sigma(fc_path))
-arima_sd <- sqrt(fit$sigma2)
-
-plot(1:20, sigma_path, type = "b", pch = 16,
-     ylim = range(c(sigma_path, arima_sd, sqrt(long_run_var))),
-     xlab = "Horizon (trading days)", ylab = "Forecast conditional sd",
-     main = "GARCH(1,1) volatility forecast from end of training")
-abline(h = arima_sd, lty = 2, col = "darkred")
-abline(h = sqrt(long_run_var), lty = 3, col = "grey40")
-
-```
-
-```{r vol-forecast-vs-actual}
-vol_df <- results_coverage
-vol_df$date <- stock_window$date[-1][vol_df$origin + 1]
-vol_df$arima_sd <- (vol_df$arima_upper - vol_df$arima_lower) / (2 * 1.96)
-
-ggplot(vol_df, aes(x = date)) +
-    geom_point(aes(y = abs(actual)), size = 0.8, colour = "grey30") +
-    geom_line(aes(y = garch_sigma), colour = "steelblue", linewidth = 0.9) +
-    geom_line(aes(y = arima_sd), colour = "darkred", linetype = "dashed") +
-    labs(title = "AAPL test period: realised |return| vs forecast volatility",
-         subtitle = "Blue: GARCH(1,1)-t one-day-ahead sigma. Dashed red: ARIMA(0,0,0) constant sd",
-         x = "Date", y = "|Log return| / forecast sd")
-```
-
-```{r vol-fitted-in-sample}
-in_df <- data.frame(date = train$date[-1],
-                    abs_return = abs(returns_vec),
-                    garch_sigma = as.numeric(sigma(fit_garch11)))
-
-ggplot(in_df, aes(x = date)) +
-    geom_point(aes(y = abs_return), size = 0.8, colour = "grey30") +
-    geom_line(aes(y = garch_sigma), colour = "steelblue", linewidth = 0.9) +
-    labs(title = "AAPL training period: realised |return| vs fitted GARCH volatility",
-         x = "Date", y = "|Log return| / fitted sd")
-```
-
-```{r price-and-vol}
-dates_ret <- stock_window$date[-1]
-n_tr <- length(returns_vec)
-
-price_df <- data.frame(date = stock_window$date,
-                       value = stock_window$close,
-                       panel = "AAPL close price ($)")
-
-vol_train <- data.frame(date = dates_ret[1:n_tr],
-                        value = as.numeric(sigma(fit_garch11)),
-                        panel = "GARCH volatility (sd)")
-
-vol_test <- data.frame(date = dates_ret[results_coverage$origin + 1],
-                       value = results_coverage$garch_sigma,
-                       panel = "GARCH volatility (sd)")
-
-combined <- rbind(price_df, vol_train, vol_test)
-combined$period <- ifelse(combined$date <= max(train$date),
-                          "Training (in-sample fit)",
-                          "Test (one-day-ahead forecast)")
-
-ggplot(combined, aes(x = date, y = value, colour = period)) +
-    geom_line() +
-    geom_vline(xintercept = as.numeric(max(train$date)), linetype = "dashed") +
-    facet_grid(panel ~ ., scales = "free_y") +
-    labs(title = "AAPL price and GARCH(1,1) conditional volatility",
-         x = "Date", y = NULL, colour = NULL)
-
-c(train_mean = mean(returns_vec),
-    test_mean = mean(returns_full[-(1:length(returns_vec))]))
-```
+Figure: one-day-ahead 95% prediction intervals over the test period, GARCH(1,1)-t (blue band) against ARIMA(0,0,0) (dashed red lines). The GARCH band is by far its widest in the first few weeks of the test period, reaching roughly ±0.10 in January 2019, well outside ARIMA's fixed lines at about ±0.03. It then contracts sharply through February and March, and for most of the remaining months it tracks close to, and at times narrower than, ARIMA's lines, before widening again around notable return clusters later in the year (for example mid-year and again around August/September). The ARIMA lines stay essentially flat across the whole period, since they use a single constant standard deviation for every day. A handful of returns fall outside both bands (most visibly the large negative return in January 2019, near -0.11), which is expected given the heavy tails in the data and the fact that a 95% interval is built to miss about 1 in 20 observations, not zero. The GARCH band widens after a large return has occurred, not before it: the model raises its forecast uncertainty once it has observed a shock, it does not anticipate one.
 
 ```{r horizon-coverage}
 #| cache: true
@@ -628,6 +562,17 @@ horizon_summary <- do.call(rbind, lapply(horizons, function(h) {
 print(horizon_summary)
 ```
 
+Does the result hold at longer horizons?
+
+The same exercise was repeated for 5-day-ahead and 20-day-ahead intervals, to check whether GARCH's advantage at one day carries over to longer forecasts.
+
+Horizon	ARIMA coverage	GARCH coverage	ARIMA width	GARCH width	Origins
+1 day	94.16%	94.94%	0.0618	0.0682	257
+5 day	94.47%	96.84%	0.0618	0.0750	253
+20 day	94.96%	97.48%	0.0619	0.0932	238
+
+ARIMA's coverage and width stay almost unchanged across horizons, since its interval always uses the same constant standard deviation regardless of how far ahead it forecasts. GARCH's width grows from 0.068 at one day to 0.093 at twenty days, and its coverage rises from close to the 95% target to nearly 97.5%, meaning it is over-covering, its intervals are wider than they need to be to hit 95%.
+
 ```{r horizon-conditional}
 cond_h <- do.call(rbind, lapply(horizons, function(h) {
     d <- results_h[results_h$h == h & !is.na(results_h$garch_sigma), ]
@@ -643,6 +588,143 @@ print(cond_h)
 tapply(results_h$garch_sigma, results_h$h, mean)
 sd(returns_full[-(1:length(returns_vec))])
 
-min(test$date)
 ```
+
+Splitting by predicted volatility regime again shows where this comes from.
+
+Horizon	Regime	ARIMA	GARCH	Origins
+1 day	Low	97.67%	96.12%	129
+1 day	High	90.63%	93.75%	128
+5 day	Low	97.64%	97.64%	127
+5 day	High	91.27%	96.03%	126
+20 day	Low	94.12%	95.80%	119
+20 day	High	95.80%	99.16%	119
+
+At one and five days GARCH still corrects ARIMA's under-coverage in the high volatility regime without badly over-covering the low volatility regime. At twenty days this breaks down: GARCH covers 99.16% of the high-volatility origins, well above target, while ARIMA's coverage is roughly flat across regimes and horizons throughout.
+
+The mechanism behind this is the model's forecast volatility path, not the regime split itself. The mean GARCH forecast standard deviation rises with horizon (0.0182 at one day, 0.0200 at five days, 0.0249 at twenty days), while the standard deviation actually realised over the test period stays flat at 0.0170. GARCH's twenty-day forecasts are, on average, well above the level of volatility that materialised, because the forecast is reverting towards the long-run level identified earlier (3.52%), a level that this training window's near-unit persistence (0.9865) makes both very high and very imprecisely estimated. This is consistent with the earlier point that GARCH's advantage at short horizons should not be extended to long-horizon volatility forecasts without further checking, since the mechanism producing the wider, over-covering intervals at twenty days is the same long-run variance estimate flagged as unreliable in the Estimate and Diagnose sections.
+
+## Forecast and Report
+
+### Part A
+
+```{r garch parameters}
+
+cf <- coef(fit_garch11)
+omega <- as.numeric(cf["omega"])
+alpha1 <- as.numeric(cf["alpha1"])
+beta1 <- as.numeric(cf["beta1"])
+
+persistence <- alpha1 + beta1
+half_life <- log(0.5) / log(persistence)
+long_run_var <- omega / (1 - persistence)
+
+print(c(persistence = persistence, half_life_days = half_life, long_run_sd = sqrt(long_run_var), sample_sd = sd(returns_vec)))
+
+
+```
+
+Fitted parameters and persistence
+
+The GARCH(1,1) model estimates alpha1 = 0.207 and beta1 = 0.780, giving a persistence of alpha1 + beta1 = 0.9865. Persistence this close to 1 means a volatility shock fades slowly: the half-life, log(0.5)/log(0.9865), is about 51 trading days, roughly ten weeks. The long-run daily standard deviation implied by the parameters, sqrt(omega / (1 - persistence)), is 0.0352, against a sample standard deviation over the training period of 0.0147. The implied long-run level is more than twice the level actually observed in training. When persistence is this close to 1, the long-run variance is very sensitive to small errors in alpha1 and beta1, so this figure is treated as an artefact of the estimation rather than a plausible long-run volatility level for AAPL, and is not used as a forecast in its own right anywhere in this project.
+
+
+### Part B
+
+```{r garch forecast path}
+
+fc_path <- ugarchforecast(fit_garch11, n.ahead = 20)
+sigma_path <- as.numeric(sigma(fc_path))
+arima_sd <- sqrt(fit$sigma2)
+
+plot(1:20, sigma_path, type = "b", pch = 16,
+     ylim = range(c(sigma_path, arima_sd, sqrt(long_run_var))),
+     xlab = "Horizon (trading days)", ylab = "Forecast conditional sd",
+     main = "GARCH(1,1) volatility forecast from end of training")
+abline(h = arima_sd, lty = 2, col = "darkred")
+abline(h = sqrt(long_run_var), lty = 3, col = "grey40")
+
+```
+
+Figure: GARCH(1,1) volatility forecast from the end of the training period, 1 to 20 trading days ahead. The forecast starts at about 0.029 and rises slowly to about 0.031 by day 20. The dashed red line marks the training sample standard deviation (0.0147); the dotted grey line marks the implied long-run standard deviation (0.0352). The forecast path sits well above the sample standard deviation throughout, because volatility was already elevated at the end of the training window, and it is still far from the long-run level at day 20, since 20 days is well under the roughly 51-day half-life. Over this horizon the forecast is mostly the last observed volatility carried forward with a small upward drift towards the long-run level, so the uncertain long-run estimate has limited effect here. It would matter more over horizons approaching or exceeding the half-life, and this model is not used for volatility forecasts that far ahead in this project.
+
+```{r vol forecast vs actual}
+vol_df <- results_coverage
+vol_df$date <- stock_window$date[-1][vol_df$origin + 1]
+vol_df$arima_sd <- (vol_df$arima_upper - vol_df$arima_lower) / (2 * 1.96)
+
+ggplot(vol_df, aes(x = date)) +
+    geom_point(aes(y = abs(actual)), size = 0.8, colour = "grey30") +
+    geom_line(aes(y = garch_sigma), colour = "steelblue", linewidth = 0.9) +
+    geom_line(aes(y = arima_sd), colour = "darkred", linetype = "dashed") +
+    labs(title = "AAPL test period: realised |return| vs forecast volatility",
+         subtitle = "Blue: GARCH(1,1)-t one-day-ahead sigma. Dashed red: ARIMA(0,0,0) constant sd",
+         x = "Date", y = "|Log return| / forecast sd")
+```
+
+Figure: test period, absolute return against forecast volatility. The blue line is the GARCH one-day-ahead forecast standard deviation; the dots are the absolute values of the returns that were actually observed on each day; the dashed red line is ARIMA's constant standard deviation. The GARCH line spikes to about 0.055 in the first weeks of January 2019, in response to the large returns visible at the start of the test period, then decays over the following weeks. Smaller spikes follow later large moves, for example around June and again around August/September. Through most of the middle of the year the GARCH line sits below the flat ARIMA line, tracking a run of calmer days. The line moves in response to a large return after it has happened; it does not anticipate the large return.
+
+```{r vol fitted in sample}
+in_df <- data.frame(date = train$date[-1],
+                    abs_return = abs(returns_vec),
+                    garch_sigma = as.numeric(sigma(fit_garch11)))
+
+ggplot(in_df, aes(x = date)) +
+    geom_point(aes(y = abs_return), size = 0.8, colour = "grey30") +
+    geom_line(aes(y = garch_sigma), colour = "steelblue", linewidth = 0.9) +
+    labs(title = "AAPL training period: realised |return| vs fitted GARCH volatility",
+         x = "Date", y = "|Log return| / fitted sd")
+```
+
+Figure: training period, absolute return against fitted GARCH volatility. This shows the same comparison over the data the model was fitted on. Because the model saw these data during estimation, the fitted line tracks the clusters of large returns closely, including the sharp rise in the last months of 2018 during the sell-off. The fitted line reaches values close to its long-run level of 0.0352 only briefly, at the peak of the sell-off in late 2018, and spends most of the training window between roughly 0.01 and 0.025, well below that level. This supports treating the estimated long-run level as a feature of how the model extrapolates persistence, rather than a level the series actually spends much time at.
+
+```{r price and vol}
+dates_ret <- stock_window$date[-1]
+n_tr <- length(returns_vec)
+
+price_df <- data.frame(date = stock_window$date,
+                       value = stock_window$close,
+                       panel = "AAPL close price ($)")
+
+vol_train <- data.frame(date = dates_ret[1:n_tr],
+                        value = as.numeric(sigma(fit_garch11)),
+                        panel = "GARCH volatility (sd)")
+
+vol_test <- data.frame(date = dates_ret[results_coverage$origin + 1],
+                       value = results_coverage$garch_sigma,
+                       panel = "GARCH volatility (sd)")
+
+combined <- rbind(price_df, vol_train, vol_test)
+combined$period <- ifelse(combined$date <= max(train$date),
+                          "Training (in-sample fit)",
+                          "Test (one-day-ahead forecast)")
+
+ggplot(combined, aes(x = date, y = value, colour = period)) +
+    geom_line() +
+    geom_vline(xintercept = as.numeric(max(train$date)), linetype = "dashed") +
+    facet_grid(panel ~ ., scales = "free_y") +
+    labs(title = "AAPL price and GARCH(1,1) conditional volatility",
+         x = "Date", y = NULL, colour = NULL)
+
+c(train_mean = mean(returns_vec),
+    test_mean = mean(returns_full[-(1:length(returns_vec))]))
+```
+
+Figure: AAPL closing price and GARCH(1,1) conditional volatility, training and test periods. The top panel shows price rising from about $27 at the start of training to a peak near $55 in September 2018, falling to about $35 by the end of December 2018, then rising again through the test period to about $70 by the end of 2019. The bottom panel shows the corresponding volatility: it rises through the second half of 2018 as the price falls, peaks sharply at the start of the test period at just above 0.055, higher than anything seen in training, and then falls back to around 0.012-0.015 for most of 2019, with smaller rises around the same mid-year and August/September episodes visible in the previous figure. The training portion of the volatility line (teal) is an in-sample fit; the test portion (coral) is a genuine one-day-ahead forecast made using only information available the day before. Volatility rising as price falls in late 2018, and falling again as price recovers through 2019, is visible in this figure, but is not interpreted here as a leverage effect, since the Sign Bias test in the Diagnose section found no significant asymmetry between the response to positive and negative shocks.
+
+
+Limitations
+
+The test period had a substantially stronger average daily return than the training period: 0.002653 against 0.000588 in training, a difference of roughly 0.2 percentage points a day. Both models use a mean estimated on the training data (ARIMA's constant mean and GARCH's mu, which are close to each other), so neither anticipates this stronger drift. Its effect on the 95% interval coverage results above is limited, since the gap is small relative to a daily standard deviation of 0.015-0.017, but it would matter more for any forecast that compounds returns over several days, and is a plausible part of why the returns-based forecast in Project 1 outperformed the price-based one on the same test period. The results here also come from a single test year containing one dominant volatility episode, the aftermath of the December 2018 sell-off, so the regime-conditional coverage results above rest on a relatively small and non-independent set of high-volatility days. The Nyblom instability found for both fitted models, and the unreliable long-run variance driven by near-unit persistence, are further reasons to treat the 20-day results, and any extrapolation beyond the test window, with caution.
+
 ## Discussion
+
+This project set out to test two things: whether a GARCH model could remove the volatility clustering that Project 1 found in the residuals of an AR/MA/ARIMA model, and whether it would give better-calibrated prediction intervals as a result. Project 1's Residual Diagnostics section found that the ARIMA(0,0,0) model, though an adequate fit to the conditional mean of AAPL's returns, left its squared residuals significantly autocorrelated (Ljung-Box on squared residuals, X-squared = 74.81, p = 5.18e-12), and identified this as a limitation of the model class rather than a fitting error: ARIMA models the conditional mean only, and cannot represent conditional variance. GARCH was proposed there as the natural extension, and this project is that extension, carried out on the same AAPL data and the same train/test split.
+
+On the first question, the answer is decisive. Engle's ARCH LM test and the Ljung-Box test on squared innovations both confirmed significant ARCH effects in the mean-only model (Check for ARCH Effects), and after fitting GARCH(1,1) the same squared-residual test that failed at 74.81 in the mean-only model fell to 3.29 with a p-value of 0.97 once the residuals were standardised by the model's own conditional volatility (Compare Models, Part A). The volatility clustering identified in Project 1 is fully accounted for by the GARCH(1,1) variance equation. This is an in-sample result, since the model was fitted to the same data it is evaluated on, so it demonstrates that the model does what it is designed to do rather than that it forecasts well, but it directly closes the gap Project 1 left open.
+
+On the second question, the answer is qualified. At the one-day-ahead horizon, GARCH's prediction intervals were similar in overall coverage to ARIMA's (94.94% against 94.16%, against a 95% target, a difference within the sampling noise of a 257-origin test) but noticeably better calibrated across volatility regimes: ARIMA over-covered on calm days and under-covered on volatile days, while GARCH sat closer to 95% in both. This pattern held, and if anything strengthened, at the five-day horizon. It broke down at the twenty-day horizon, where GARCH's intervals widened well beyond what was needed and over-covered in every regime, most severely in the high-volatility regime (99.16%). The mechanism for this was identified directly: GARCH's mean forecast volatility rose from 0.0182 at one day to 0.0249 at twenty days, while the volatility actually realised over the test period stayed flat at 0.0170. The twenty-day forecast was reverting towards an implied long-run standard deviation of 0.0352, more than twice the training sample's own standard deviation, a consequence of the fitted persistence (0.9865) being close enough to 1 that the long-run variance estimate is highly sensitive to small parameter errors. So GARCH improves interval calibration at the short horizons this project tested most thoroughly, but this result should not be extended to longer horizons without further work, since the same estimation issue that makes GARCH's long-run variance unreliable is exactly what causes the twenty-day intervals to fail.
+
+Both the ARCH(1) and GARCH(1,1) fits failed the Nyblom joint stability test (Estimate and Diagnose), meaning the estimated parameters may not be constant across the training window. The training period spans the December 2018 sell-off, a plausible source of a genuine change partway through the sample rather than a stable data-generating process. This is consistent with the twenty-day result above: an unstable long-run variance estimate is exactly what produces an unreliable long-horizon forecast, so the two limitations are the same underlying issue rather than two separate ones.
+
+Read together, the two projects tell a coherent story about the limits of mean-only forecasting for this series. Project 1 established that an efficient-market-consistent random walk was the best available model for the conditional mean of AAPL's returns, and that no AR/MA/ARIMA specification improved on it in cross-validation or on the test set. This project shows that the unexplained structure Project 1 left behind was in the variance, not the mean, and that a GARCH model resolves it directly and improves the calibration of short-horizon prediction intervals, while making clear, through the twenty-day result and the Nyblom failures, that this resolution has real limits: it depends on parameter stability that the data do not fully support, and it does not extend cleanly to longer horizons. The combined result across both projects is that AAPL's daily conditional mean was, over this sample, essentially unforecastable beyond a constant, while its conditional variance was forecastable and exploitable for short-horizon risk assessment, within the bounds established here.

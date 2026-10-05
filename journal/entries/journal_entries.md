@@ -64,3 +64,34 @@ ARIMA then extends ARMA by adding **differencing** to handle non-stationary seri
 **What I want to keep in mind:** it's tempting to over-difference in search of stationarity, but the notes flag that this is detectable — an over-differenced series shows inflated variance and a first-lag autocorrelation near -0.5, so if differencing makes the variance go *up* rather than down, that's a sign of having gone one step too far.
 
 **Takeaway:** today connected the ACF/PACF diagnostics directly to model choice for the first time — rather than treating them as abstract plots, they're now a genuine identification tool, and ARIMA makes sense as "ARMA plus a pre-processing step for non-stationarity" rather than a separate model entirely.
+
+---
+
+## Journal Entry: Lecture — State Space Models
+
+Today's lecture introduced state space models, and this was the section I have enjoyed most so far. The idea is simple: **observation = signal + noise**. There is an underlying state $\theta_t$ that we never see directly, and the data $y_t$ are noisy measurements of it. Conditional on the state, each observation depends only on $\theta_t$, and the state itself evolves as a Markov chain. The whole model is specified by two equations:
+
+- **Observation equation:** $Y_t = F\theta_t + v_t, \quad v_t \sim N(0, V)$
+- **State equation:** $\theta_t = G\theta_{t-1} + w_t, \quad w_t \sim N(0, W)$
+
+Together with a normal prior on $\theta_0$, this is the dynamic linear model (linear, Gaussian state space model), and the Kalman filter is used to fit it.
+
+**Building up three models.** What made the lecture click was that the three special cases were built up one step at a time, each adding one component to the last:
+
+1. **Local level (random walk plus noise):** $Y_t = \mu_t + v_t$, with $\mu_t = \mu_{t-1} + w_t$. The state is just a level that drifts as a random walk, and the observations are noisy readings of it. We fitted this to the Nile data using `statespacer`, and it gave the smoothed level, filtered level and 1-step predictions.
+2. **Local linear trend:** here the level gets a slope $\beta_t$, which is itself a random walk: $\mu_t = \mu_{t-1} + \beta_{t-1} + e_t$ and $\beta_t = \beta_{t-1} + \gamma_t$. The state vector grows from one element to two (level and slope), so $G$ and $W$ change accordingly. This was the right structure for the global temperature series, where the trend keeps changing direction.
+3. **Basic structural model:** on top of the local linear trend, a seasonal component $s_t$ is added, with the constraint that the seasonal effects sum to zero over a year, $s_t = -\sum_{j=1}^{S-1} s_{t-j} + \delta_t$. We applied this to monthly Cape Town temperature and to UK gas consumption with `StructTS`.
+
+Seeing it built this way made it clear that each new component is one more block in the state vector, not a whole new model. It also links back to the structural time series idea from the start of the lecture, $y_t = \mu_t + \gamma_t + \epsilon_t$, where the trend, seasonal and irregular parts are each modelled as unobserved stochastic processes.
+
+**Why I found it interesting.** The main thing I enjoyed is how flexible the framework is:
+
+- Many models we have already covered (ARIMA and exponential smoothing/ETS) can be written in state space form and fitted with the same machinery.
+- It handles **missing values** naturally, and stationarity is not required.
+- Explanatory variables can be added straightforwardly (to the observation equation), and time-varying coefficients are possible.
+- Adding structural components is easier to reason about than working out AR and MA orders from ACF/PACF plots.
+- It extends to multivariate series, and to nonlinear or non-Gaussian cases (extended Kalman filter, particle filters, hidden Markov models).
+
+**Difficulties to keep in mind.** The lecture was also honest about the downsides. The variances ($V$, $W$ and the component variances) can be hard to separate from each other (identifiability), and maximising the likelihood is harder than the software makes it look, so good starting values matter. This is why the `initial` argument appears in the `statespacer` calls.
+
+**Takeaway:** state space models give one general framework in which trend, slope and seasonality are separate, interpretable components, and in which models I already knew turn out to be special cases. It is the most flexible approach so far, and I would like to try it on the AAPL data in my portfolio.
