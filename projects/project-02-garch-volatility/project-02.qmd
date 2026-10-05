@@ -2,6 +2,61 @@
 title: "GARCH Volatility Modelling: Extending the AAPL Forecasting Analysis"
 format: html
 ---
+## Introduction
+
+In Project 1 I compared AR, MA and ARIMA models for AAPL daily prices and
+log returns. The models that fitted best in both cases were the simplest ones,
+ARIMA(0,0,0) for the returns and ARIMA(0,1,0) for the price. The residual
+diagnostics for these models showed a problem. The Ljung-Box test on the
+residuals themselves was only weakly significant, but the same test on the
+squared residuals was strongly significant (statistic 74.81, p = 5.2e-12).
+This means the size of the errors was still correlated over time, so that
+large errors tended to be followed by large errors and small errors by small
+errors. An ARIMA model describes where a series is going next and assumes the
+spread around that forecast is the same in every period (course notes,
+Chapter 7), so it cannot represent this pattern.
+
+ARCH and GARCH models were developed for this situation. They add a second
+equation that lets the conditional variance change over time, depending on
+recent squared errors and on the previous variance (Engle, 1982; Bollerslev,
+1986, as presented in Chapter 7 of the course notes). This project applies a
+GARCH(1,1) model to the same AAPL returns and asks two questions.
+
+1. Does the GARCH model remove the volatility clustering that the ARIMA model
+   left in the residuals?
+2. Does it give better prediction intervals for out-of-sample returns, at
+   horizons of 1, 5 and 20 trading days?
+
+The second question concerns the intervals and not the point forecasts. Both
+the ARIMA and the GARCH model use a constant mean, so their point forecasts
+are almost the same, and the course notes make the same point about variance
+models generally: what changes is the uncertainty attached to the forecast,
+not the forecast itself. An ARIMA interval has the same width every day,
+whereas a GARCH interval should be wider after volatile days and narrower
+after calm days. A well-calibrated 95% interval should contain the actual
+return about 95% of the time, and I test whether this holds for each model,
+and for calm and volatile periods separately.
+
+The data are the same as in Project 1: AAPL daily closing prices from
+[data source, to be added later] between January 2017 and December 2019. The
+first 66% of the observations (to 21 December 2018) form the training set and
+the remaining observations (24 December 2018 onwards, about one year) form the
+test set. Keeping the same split as Project 1 allows the two projects to be
+compared directly, and it keeps the test set untouched until the models have
+been chosen.
+
+The analysis follows the modelling workflow in the lecturer's ARCH and GARCH
+guide and Chapter 7 of the course notes: define the series, explore it,
+specify the mean, obtain the innovations, test for ARCH effects, specify the
+variance, estimate, diagnose, compare the models, and forecast. The mean
+equation is checked again under joint estimation with the variance equation.
+The notes warn that fitting the mean first and the variance to its residuals
+afterwards gives wrong standard errors, and the mean chosen in Project 1 was
+selected under a constant-variance likelihood. The sections below follow the
+same order as the workflow.
+
+[One or two sentences on how AI was used in this project, in your own words,
+pointing to the AI use log.]
 
 ## Define the Series
 ```{r setup}
@@ -11,6 +66,7 @@ library(dplyr)
 library(rugarch)
 library(FinTS)
 library(here)
+library(ggplot2)
 
 TICKER <- "AAPL"    
 Start_date <- as.Date("2017-01-01")
@@ -41,15 +97,80 @@ returns_vec <- train$log_return[!is.na(train$log_return)]
 
 ```
 
+
+
+## Define the Series
+
+The series modelled in this project is the daily log return of AAPL. The
+given ARCH and GARCH guide, lists defining the series as the first step of
+the workflow and asks for the sampling interval to be stated, so I set out
+both here. The observations are daily closing prices on trading days between 3 January 2017 and 31 December 2019, 754 in total. There are no rows for weekends or public holidays, so consecutive observations are one trading day apart, and a return on a Monday covers the weekend. In Project 1 I indexed the data by trading day instead of by calendar date for this reason.
+
+The variance equation describes the innovations around a conditional mean and not the level of a series, and the course notes list fitting a GARCH model to prices as a common mistake (Chapter 7). Prices in this window are also clearly non-stationary, as Project 1 showed with the ADF and KPSS tests, so I work with returns. The log return on day t is
+
+r_t = log(P_t) - log(P_{t-1}),
+
+where P_t is the closing price. Log returns add up across days, which is
+convenient for the multi-day horizons used later, and for small moves they
+are close to the simple percentage return (course notes, Chapter 7; lecturer's guide, Section 2). Taking the first difference of the log price loses the first observation, so the 497 training prices give 496 training returns.
+
+The data are split by time and not at random, so that the test set contains only days after every day used for fitting. The same split is used as in Project 1.
+
+| Set | Trading days | First day | Last day |
+|---|---|---|---|
+| Training | 497 (496 returns) | 3 January 2017 | 21 December 2018 |
+| Test | 257 | 24 December 2018 | 31 December 2019 |
+
+Everything up to and including model selection uses only the training set. The test set is used at the end, to compare the one-day, five-day and 20-day forecast intervals of the two models. The first test return is measured from the last training price, which is the return actually earned on the first test day, and no test information is used in any fitted model.
+
+[Optional: one sentence on why 2017 to 2019 was chosen, in your own words. For example, the window contains both a long calm period and the sell-off at the end of 2018, so it contains the kind of volatility change that a variance model is meant to describe.]
+
 ## Explore (Recap)
+
+
 This project uses the same AAPL log returns series established and explored in detail in Project 1 Financial Forecasting using ARIMA. Key findings from that EDA that are relevent to this porject include: log returns show near-zero linear autocorrelation but substantial excess kurtosis (5.92 vs. 3 for a normal distribution) and visually apparent volatility clustering, concentrated particularly around the Q4 2018 price drop. This motivated Project 1's residual diagnostics, which confirmed the volatitlity clustering statistically (squared-residual Ljung-Box, p = 5.18e-12) but found no mechanism within the AR/MA/ARIMA model class to represent it, giving us the starting point for this project: GARCH volatility modelling.
+
+The full exploratory analysis of this series is in Project 1, so this section only repeats what the rest of the project relies on.
 
 ```{r explore-recap}
 plot(returns_vec, type = "l", col = "darkred",
      main = paste(TICKER, "- Training Set Log Returns"),
      xlab = "Trading Day", ylab = "Log Return")
 abline(h = 0, lty = 2, col = "grey40")
+
 ```
+
+Figure: training-set log returns. The returns fluctuate around zero with no trend. The size of the swings is not constant, though. Through most of 2017 the returns are small, and the swings get larger from the second half of 2018, with the largest ones in the last few months of the training set, which is the period of the sell-off in AAPL's price. Large returns seem to arrive together and small returns seem to arrive together, which is the volatility clustering that a variance model is meant to describe.
+
+```{r explore-summary}
+m <- mean(returns_vec)
+s <- sd(returns_vec)
+data.frame(mean = m, sd = s,
+           skewness = mean((returns_vec - m)^3) / s^3,
+           kurtosis = mean((returns_vec - m)^4) / s^4)
+```
+
+The summary statistics of the 496 training returns point the same way.
+
+Mean	Standard deviation	Skewness	Kurtosis
+0.00059	0.0147	-0.29	5.92
+
+The mean is very small compared with the standard deviation, so a constant mean is a reasonable description of the average return. A normal distribution has a kurtosis of 3, so a kurtosis of 5.92 means the extreme returns are more frequent than a normal distribution allows. This is the heavy-tail feature listed with the stylised facts in the course notes and in the lecturer's guide, and it is the reason a Student-t distribution is used for the innovations later in the project. The negative skewness is mild.
+
+```{r explore acf}
+par(mfrow = c(1, 2))
+acf(returns_vec, lag.max = 20, main = "ACF of returns")
+acf(returns_vec^2, lag.max = 20, main = "ACF of squared returns")
+par(mfrow = c(1, 1))
+
+ci <- 1.96 / sqrt(length(returns_vec))
+which(abs(acf(returns_vec^2, lag.max = 20, plot = FALSE)$acf[-1]) > ci)
+```
+
+Figure: ACF of returns and of squared returns. The autocorrelations of the returns are small and almost all inside the significance bounds, apart from an occasional isolated bar at longer lags, so there is little linear dependence in the returns themselves. The autocorrelations of the squared returns are different. Nine of the first twelve lags of the squared returns are above the upper bound (lags 1, 2, 3, 5, 6, 8, 9, 11 and 12), and lags 17 and 20 are also above it, so the dependence in the size of the returns lasts for many lags and does not stop after one or two. With 20 lags tested, about one bar would be outside the bounds by chance, so eleven is far more than chance would give. The bars do not decay smoothly, but the autocorrelation stays positive throughout. This is the pattern the notes describe for financial returns: a series that is almost uncorrelated but whose size is still predictable. It is the reason for fitting a model for the variance, and it is tested formally in the section on ARCH effects.
+
+Project 1 also tested the returns for stationarity. The ADF test rejected a unit root, while the KPSS test was borderline (p = 0.03), which I put down to the changing variance and not to a trend in the mean. The returns are therefore treated as stationary in the mean, and the mean equation in this project is a constant.
+
 
 ## Specify the Mean
 ```{r joint mean comparison}
@@ -80,6 +201,53 @@ print(joint_results)
 ```
 
 
+
+## Specify the Mean
+
+The mean equation in Project 1 was chosen with a likelihood that assumed the
+variance is constant. Now that the model has a variance equation, that choice
+should be checked again under the joint likelihood of both equations. The
+course notes warn that fitting the mean first and a GARCH model to its
+residuals afterwards gives reasonable coefficients but wrong standard errors,
+and that the conditional mean should be got right first, even if that means a
+constant (Chapter 7).
+
+I fitted the same four mean specifications as in Project 1, an ARMA order of
+(0,0), (1,0), (0,1) and (1,1), each together with a GARCH(1,1) variance
+equation and Student-t innovations. Each model was estimated by maximum
+likelihood with `ugarchfit()`, so the mean and variance parameters were
+estimated at the same time, and the models were compared with AIC and BIC. The
+variance equation was held fixed across the four fits, so that any difference
+between them comes from the mean equation alone.
+
+| Mean order | AIC | BIC |
+|---|---|---|
+| (0,0) | -5.859 | -5.817 |
+| (1,0) | -5.855 | -5.804 |
+| (0,1) | -5.855 | -5.804 |
+| (1,1) | -5.852 | -5.793 |
+
+The information criteria reported by `rugarch` are divided by the number of
+observations, which is why they are around -5.9 and not in the thousands. Lower
+values are better, and only the ordering and the differences matter. The
+constant-only mean (0,0) has the lowest AIC and the lowest BIC, and both
+criteria get worse as AR or MA terms are added. Multiplying the differences by
+the 496 observations puts them back on the usual scale: adding one AR or one MA
+term raises the AIC by about 1.8. An extra parameter costs 2 in the AIC
+penalty, so the extra term improved the log-likelihood by only about 0.1,
+which is almost nothing. The BIC penalises extra parameters more heavily and
+the gap is larger, about 6 for one extra term.
+
+This agrees with Project 1, where the constant-only model was also selected
+under the constant-variance likelihood, and with the ACF and PACF of the
+returns, which showed no clear low-order structure. The choice of mean does not
+depend on whether the variance is modelled, which fits the description in the
+notes of the mean and variance as separate models of separate things. The mean
+equation used in the rest of this project is therefore a constant.
+
+[Optional: one sentence in your own words on why the result is not surprising,
+given that the returns are almost uncorrelated.]
+
 ## Obtain Innovations
 
 ```{r obtain innovations}
@@ -90,6 +258,13 @@ cat("Mean estimate:", coef(fit), "\n")
 cat("Number of innovations:", length(innovations), "\n")
 ```
 
+
+The tests for ARCH effects are applied to the innovations of the mean model, because it is the variance of the innovations and not the variance of the raw series that is in question (course notes, Chapter 7). To get them I fitted the mean equation on its own, a constant-only model with no variance equation, using arima() with order (0,0,0). The innovations are the differences between each daily return and the fitted mean.
+
+The reason for fitting the mean on its own, and not using the residuals from the GARCH fits in the previous section, is that the test would otherwise be circular. The question the ARCH tests ask is whether a model that assumes a constant variance leaves any structure in the variance behind. Residuals from a model that already has a variance equation cannot answer that, because the variance equation has already been used to absorb some of that structure.
+
+The fitted mean is 0.000588 per day, which is the sample mean of the training returns and matches the value in the summary statistics of the previous section and in Project 1. The model gives 496 innovations, one for each training return. The innovations have a mean of zero by construction, and each one measures how far that day's return was from the average return. They are the input to the tests for ARCH effects in the next section.
+
 ## Check for ARCH Effects
 
 ```{r arch effects test}
@@ -99,6 +274,12 @@ print(arch_results)
 lb_squared <- Box.test(innovations^2, lag = 10, type = "Ljung-Box")
 print(lb_squared)
 ```
+
+Before fitting a GARCH model it needs to be established that one is actually needed, otherwise a variance equation would just be adding parameters to fit noise. Two tests were run on the innovations from the previous step: Engle's ARCH LM test, and the Ljung-Box test applied to the squared innovations. Both ask the same underlying question in slightly different ways, whether the size of past shocks helps predict the size of future ones, and both were already used in this form in Project 1, so this step is a formal repeat of that earlier diagnostic rather than a new technique.
+
+Engle's test regresses the squared innovations on their own lags and tests whether the lagged terms are jointly significant. At 12 lags it gives chi-squared = 52.291, df = 12, p = 5.505e-07. The Ljung-Box test on the squared innovations at lag 10 gives X-squared = 74.81, df = 10, p = 5.18e-12, the same result already reported in Project 1's Residual Diagnostics section, since it is testing the same object, the squared residuals of a constant-mean model fitted to these training returns.
+
+Both tests reject the null of no ARCH effects decisively. This is the formal confirmation, following the course's own workflow, of what the earlier residual diagnostics already showed informally: the conditional mean is adequately captured by a constant, but the conditional variance is not constant, and a model that only specifies the mean is missing structure that a variance equation could capture. This motivates fitting an ARCH/GARCH model in the next step.
 
 ## Specify the Variance
 
@@ -122,13 +303,42 @@ show(fit_arch1)
 show(fit_garch11)
 ```
 
+
 ## Estimate
 
-### "optimal parameters" table goes here and interpretation of the results
+Estimate
 
+Two variance specifications were fitted on top of the constant mean established earlier: ARCH(1), the simplest model capable of representing volatility clustering, and GARCH(1,1), the course's default working specification. Both were estimated with ugarchspec()/ugarchfit() on the 496 training returns, using Student-t errors to match the fat tails documented in the EDA.
+
+Parameter	ARCH(1)	GARCH(1,1)
+mu	0.001241	0.001255
+omega	0.000199	0.000017
+alpha1	0.603748	0.206976
+beta1	—	0.779538
+shape	2.843388	3.328737
+Log-likelihood	1444.064	1458.025
+
+All parameters in both models are significant at the 5% level. In ARCH(1), alpha1 = 0.60 means a large share of a shock's effect on variance dies out within a single day, since there is no beta term to carry it forward. In GARCH(1,1), alpha1 falls to 0.21 and beta1 = 0.78 takes over most of the persistence, so the two models describe volatility decaying at very different speeds even though both are fitted to the same data.
+
+Model	AIC	Bayes (BIC)
+ARCH(1)	-5.8067	-5.7728
+GARCH(1,1)	-5.8590	-5.8166
+
+GARCH(1,1) has the lower (more negative) AIC and BIC and the higher log-likelihood, so it is preferred on both criteria. GARCH(1,1) adds one parameter (beta1) over ARCH(1), and the added complexity still lowers the information criteria, so it is justified by the fit rather than by information criteria alone. Whether this improved fit also translates into better-behaved residuals is checked next.
 ## Diagnose
 
-### exploring all tests performed and there results, including Ljung-Box, ARCH-LM, and residual diagnostics (interpretation of the results)
+Diagnose
+
+Each fitted model was checked using its standardised residuals, the raw residuals divided by the model's own conditional standard deviation for that day. If the variance equation has captured the volatility clustering correctly, these standardised residuals should show no leftover autocorrelation, in either their raw or squared form.
+
+Test	ARCH(1)	GARCH(1,1)
+Ljung-Box, standardised residuals, lag 5	2.14 (p=0.58)	2.61 (p=0.48)
+Ljung-Box, standardised squared residuals, lag 5	5.29 (p=0.13)	1.21 (p=0.81)
+ARCH LM, lag 6/7	9.39 (p=0.019)	0.57 (p=0.97)
+
+Neither model shows autocorrelation in the raw standardised residuals, so both capture the conditional mean adequately. The squared-residual and ARCH LM tests separate the two models: ARCH(1) fails the ARCH LM test at lag 6 (p = 0.019), meaning some volatility clustering is still left unexplained after fitting it, while GARCH(1,1) passes every squared-residual and ARCH LM test reported, up to lag 9 (p = 0.94). GARCH(1,1) is therefore the model carried forward for the rest of this project.
+
+Two further diagnostics apply to both models and are noted here rather than repeated in later sections. The Nyblom joint stability test rejects parameter constancy for both ARCH(1) (statistic 3.31 against a 5% critical value of 1.24) and GARCH(1,1) (statistic 5.85 against a 5% critical value of 1.47), meaning the fitted parameters may not be stable across the training window. The training period spans the December 2018 sell-off, a plausible source of a structural change partway through the sample. This limitation is addressed in the Discussion. The Sign Bias test is non-significant for both models (GARCH(1,1) joint effect p = 0.82), so there is no evidence of an asymmetric response to positive versus negative shocks, and a symmetric GARCH specification is an appropriate choice for this series.
 
 
 ## Compare Models (Part A: Residual Problem / Part B: Interval Calibration)
@@ -148,12 +358,14 @@ comparison <- data.frame(
 print(comparison)
 ```
 
+### Part B
+
 ```{r coverage-test}
 returns_full <- stock_window$log_return[-1]
 n_train <- length(returns_vec)
 n_total <- length(returns_full)
 
-origins <- seq(n_train, n_total - 1, by = 10)
+origins <- seq(n_train, n_total - 1, by = 1)
 
 results_coverage <- data.frame()
 
@@ -171,6 +383,8 @@ for (i in origins) {
     } else {
         arima_covered <- NA
         arima_width <- NA
+        arima_lower <- NA
+        arima_upper <- NA
     }
 
     spec_i <- ugarchspec(
@@ -185,7 +399,7 @@ for (i in origins) {
         g_mean <- as.numeric(fitted(fc_g))
         g_sigma <- as.numeric(sigma(fc_g))
         df_t <- coef(fit_g)["shape"]
-        tq <- qt(0.975, df = df_t)
+        tq <- qdist("std", p = 0.975, shape = df_t)
         garch_lower <- g_mean - tq * g_sigma
         garch_upper <- g_mean + tq * g_sigma
         garch_covered <- actual >= garch_lower & actual <= garch_upper
@@ -193,10 +407,14 @@ for (i in origins) {
     } else {
         garch_covered <- NA
         garch_width <- NA
+        garch_lower <- NA
+        garch_upper <- NA
+        g_sigma <- NA
+        df_t <- NA
     }
 
     results_coverage <- rbind(results_coverage, data.frame(
-        origin = i, arima_covered, arima_width, garch_covered, garch_width
+        origin = i, actual, arima_lower, arima_upper, arima_covered, arima_width, garch_lower, garch_upper, garch_covered, garch_width, garch_sigma = g_sigma, garch_df = df_t
     ))
 }
 
@@ -213,6 +431,218 @@ print(coverage_summary)
 ```
 
 
+```{r conditional coverage}
+
+med_sigma <- median(results_coverage$garch_sigma, na.rm = TRUE)
+high <- results_coverage$garch_sigma > med_sigma
+
+cond_coverage <- data.frame(
+    regime = c("Low predicted volatility", "High predicted volatility"),
+    ARIMA = c(mean(results_coverage$arima_covered[!high]), mean(results_coverage$arima_covered[high])),
+    GARCH = c(mean(results_coverage$garch_covered[!high]), mean(results_coverage$garch_covered[high])), 
+    n = c(sum(!high), sum(high))
+)
+
+print(cond_coverage)
+
+```
+
+
+```{r interval plot}
+plot_df <- results_coverage
+plot_df$date <- stock_window$date[-1][plot_df$origin +1]
+
+int_plot <- ggplot(plot_df, aes(x = date)) +
+    geom_ribbon(aes(ymin = garch_lower, ymax = garch_upper), fill = "steelblue", alpha = 0.3) + 
+    geom_line(aes(y = arima_lower), colour = "darkred", linetype = "dashed") +
+    geom_line(aes(y = arima_upper), colour = "darkred", linetype = "dashed") +
+    geom_point(aes(y = actual), size = 0.7) +
+    labs(title = "AAPL 1-day-ahead 95% prediction intervals (test period)",
+         subtitle = "Blue band: GARCH(1,1)-t. Dashed red: ARIMA(0,0,0)",
+         x = "Date", y = "Log return")
+
+
+```
+
 ## Forecast and Report
 
+### Part A
+
+```{r garch parameters}
+
+cf <- coef(fit_garch11)
+omega <- as.numeric(cf["omega"])
+alpha1 <- as.numeric(cf["alpha1"])
+beta1 <- as.numeric(cf["beta1"])
+
+persistence <- alpha1 + beta1
+half_life <- log(0.5) / log(persistence)
+long_run_var <- omega / (1 - persistence)
+
+print(c(persistence = persistence, half_life_days = half_life, long_run_sd = sqrt(long_run_var), sample_sd = sd(returns_vec)))
+
+
+```
+
+
+### Part B
+
+```{r garch forecast path}
+
+fc_path <- ugarchforecast(fit_garch11, n.ahead = 20)
+sigma_path <- as.numeric(sigma(fc_path))
+arima_sd <- sqrt(fit$sigma2)
+
+plot(1:20, sigma_path, type = "b", pch = 16,
+     ylim = range(c(sigma_path, arima_sd, sqrt(long_run_var))),
+     xlab = "Horizon (trading days)", ylab = "Forecast conditional sd",
+     main = "GARCH(1,1) volatility forecast from end of training")
+abline(h = arima_sd, lty = 2, col = "darkred")
+abline(h = sqrt(long_run_var), lty = 3, col = "grey40")
+
+```
+
+```{r vol-forecast-vs-actual}
+vol_df <- results_coverage
+vol_df$date <- stock_window$date[-1][vol_df$origin + 1]
+vol_df$arima_sd <- (vol_df$arima_upper - vol_df$arima_lower) / (2 * 1.96)
+
+ggplot(vol_df, aes(x = date)) +
+    geom_point(aes(y = abs(actual)), size = 0.8, colour = "grey30") +
+    geom_line(aes(y = garch_sigma), colour = "steelblue", linewidth = 0.9) +
+    geom_line(aes(y = arima_sd), colour = "darkred", linetype = "dashed") +
+    labs(title = "AAPL test period: realised |return| vs forecast volatility",
+         subtitle = "Blue: GARCH(1,1)-t one-day-ahead sigma. Dashed red: ARIMA(0,0,0) constant sd",
+         x = "Date", y = "|Log return| / forecast sd")
+```
+
+```{r vol-fitted-in-sample}
+in_df <- data.frame(date = train$date[-1],
+                    abs_return = abs(returns_vec),
+                    garch_sigma = as.numeric(sigma(fit_garch11)))
+
+ggplot(in_df, aes(x = date)) +
+    geom_point(aes(y = abs_return), size = 0.8, colour = "grey30") +
+    geom_line(aes(y = garch_sigma), colour = "steelblue", linewidth = 0.9) +
+    labs(title = "AAPL training period: realised |return| vs fitted GARCH volatility",
+         x = "Date", y = "|Log return| / fitted sd")
+```
+
+```{r price-and-vol}
+dates_ret <- stock_window$date[-1]
+n_tr <- length(returns_vec)
+
+price_df <- data.frame(date = stock_window$date,
+                       value = stock_window$close,
+                       panel = "AAPL close price ($)")
+
+vol_train <- data.frame(date = dates_ret[1:n_tr],
+                        value = as.numeric(sigma(fit_garch11)),
+                        panel = "GARCH volatility (sd)")
+
+vol_test <- data.frame(date = dates_ret[results_coverage$origin + 1],
+                       value = results_coverage$garch_sigma,
+                       panel = "GARCH volatility (sd)")
+
+combined <- rbind(price_df, vol_train, vol_test)
+combined$period <- ifelse(combined$date <= max(train$date),
+                          "Training (in-sample fit)",
+                          "Test (one-day-ahead forecast)")
+
+ggplot(combined, aes(x = date, y = value, colour = period)) +
+    geom_line() +
+    geom_vline(xintercept = as.numeric(max(train$date)), linetype = "dashed") +
+    facet_grid(panel ~ ., scales = "free_y") +
+    labs(title = "AAPL price and GARCH(1,1) conditional volatility",
+         x = "Date", y = NULL, colour = NULL)
+
+c(train_mean = mean(returns_vec),
+    test_mean = mean(returns_full[-(1:length(returns_vec))]))
+```
+
+```{r horizon-coverage}
+#| cache: true
+horizons <- c(1, 5, 20)
+max_h <- max(horizons)
+
+n_r_train <- length(returns_vec)
+n_r_total <- length(returns_full)
+origins <- seq(n_r_train, n_r_total - 1, by = 1)
+
+res_list <- list()
+
+for (i in origins) {
+    data_sub <- returns_full[1:i]
+
+    fit_a <- tryCatch(arima(data_sub, order = c(0,0,0)), error = function(e) NULL)
+    if (!is.null(fit_a)) fc_a <- predict(fit_a, n.ahead = max_h)
+
+    spec_i <- ugarchspec(
+        variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+        mean.model = list(armaOrder = c(0,0), include.mean = TRUE),
+        distribution.model = "std"
+    )
+    fit_g <- tryCatch(ugarchfit(spec = spec_i, data = data_sub, solver = "hybrid"),
+                      error = function(e) NULL)
+    if (!is.null(fit_g)) {
+        fc_g <- ugarchforecast(fit_g, n.ahead = max_h)
+        g_mean <- as.numeric(fitted(fc_g))
+        g_sigma <- as.numeric(sigma(fc_g))
+        tq <- qdist("std", p = 0.975, shape = coef(fit_g)["shape"])
+    }
+
+    for (h in horizons) {
+        if (i + h > n_r_total) next
+        actual <- returns_full[i + h]
+        one_row <- data.frame(origin = i, h = h, actual = actual,
+                              arima_covered = NA, arima_width = NA,
+                              garch_covered = NA, garch_width = NA,
+                              garch_sigma = NA)
+        if (!is.null(fit_a)) {
+            lo <- fc_a$pred[h] - 1.96 * fc_a$se[h]
+            hi <- fc_a$pred[h] + 1.96 * fc_a$se[h]
+            one_row$arima_covered <- actual >= lo & actual <= hi
+            one_row$arima_width <- hi - lo
+        }
+        if (!is.null(fit_g)) {
+            lo <- g_mean[h] - tq * g_sigma[h]
+            hi <- g_mean[h] + tq * g_sigma[h]
+            one_row$garch_covered <- actual >= lo & actual <= hi
+            one_row$garch_width <- hi - lo
+            one_row$garch_sigma <- g_sigma[h]
+        }
+        res_list[[length(res_list) + 1]] <- one_row
+    }
+}
+results_h <- do.call(rbind, res_list)
+
+horizon_summary <- do.call(rbind, lapply(horizons, function(h) {
+    d <- results_h[results_h$h == h, ]
+    data.frame(Horizon = h,
+               ARIMA_coverage = mean(d$arima_covered, na.rm = TRUE),
+               GARCH_coverage = mean(d$garch_covered, na.rm = TRUE),
+               ARIMA_width = mean(d$arima_width, na.rm = TRUE),
+               GARCH_width = mean(d$garch_width, na.rm = TRUE),
+               n_origins = sum(!is.na(d$garch_covered)))
+}))
+print(horizon_summary)
+```
+
+```{r horizon-conditional}
+cond_h <- do.call(rbind, lapply(horizons, function(h) {
+    d <- results_h[results_h$h == h & !is.na(results_h$garch_sigma), ]
+    high <- d$garch_sigma > median(d$garch_sigma)
+    data.frame(Horizon = h,
+               Regime = c("Low predicted volatility", "High predicted volatility"),
+               ARIMA = c(mean(d$arima_covered[!high]), mean(d$arima_covered[high])),
+               GARCH = c(mean(d$garch_covered[!high]), mean(d$garch_covered[high])),
+               n = c(sum(!high), sum(high)))
+}))
+print(cond_h)
+
+tapply(results_h$garch_sigma, results_h$h, mean)
+sd(returns_full[-(1:length(returns_vec))])
+
+min(test$date)
+```
 ## Discussion
