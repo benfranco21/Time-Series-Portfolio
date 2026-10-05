@@ -9,3 +9,7 @@ title: "Projects"
 ## Project 2
 
 [GARCH Volatility Modelling: Extending the AAPL Forecasting Analysis](project-02-garch-volatility/project-02.qmd)
+
+## Project 3
+
+[Forecasting South African Daily Peak Electricity Demand: Exponential Smoothing vs Time Series Regression](project-03-eskom-demand/project-03.qmd)

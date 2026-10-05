@@ -1,0 +1,29 @@
+---
+title: "Forecasting South African Daily Peak Electricity Demand: Exponential Smoothing vs Time Series Regression"
+format: html
+---
+## Introduction
+
+## Define the Series
+
+## Explore
+
+## Design the Comparison
+
+## Simple Exponential Smoothing (Own Code)
+
+## Holt-Winters and ETS
+
+## Exponential Smoothing Diagnostics
+
+## Time Series Regression (OLS)
+
+## Regression with ARMA Errors
+
+## Compare Models
+
+## Forecast and Report
+
+## Discussion
+
+## References
