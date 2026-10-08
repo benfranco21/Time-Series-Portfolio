@@ -2,21 +2,517 @@
 title: "Forecasting South African Daily Peak Electricity Demand: Exponential Smoothing vs Time Series Regression"
 format: html
 ---
+
+```{r setup}
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(lubridate)
+set.seed(2026)
+
+daily <- readRDS(here::here("data", "eskom_daily_peak.rds"))
+
+```
+
 ## Introduction
 
 ## Define the Series
 
+```{r define series}
+nrow(daily)
+range(daily$date)
+all(diff(daily$date) == 1)
+table(daily$n_hours)
+
+summary(daily$peak)
+
+round(prop.table(table(daily$peak_hour)),3)
+
+```
+
+
+
 ## Explore
 
+```{r explore time plot}
+ggplot(daily, aes(date, peak)) + 
+    geom_line(colour = "steelblue") +
+    labs(x = NULL, y = "Daily Peak Demand (MW)", title = "South African Daily Peak Electricity Demand") +
+    theme_minimal()
+```
+
+```{r explore peak hour}
+ggplot(daily, aes(factor(peak_hour, levels = 0:23))) +
+    geom_bar(fill = "steelblue")+
+    scale_x_discrete(drop = FALSE) +
+    labs(x = "Hour behginning", y = "number of days") +
+    theme_minimal()
+```
+
+```{r explore weekly}
+daily <- daily |>
+    mutate(dow = wday(date, label = TRUE, week_start = 1),
+           month = month(date, label = TRUE),
+           year = year(date))
+
+ggplot(daily, aes(dow, peak)) +
+    geom_boxplot(fill = "steelblue", alpha = 0.6)+
+    labs(x = NULL, y = "daily peak demand (MW)") +
+    theme_minimal()
+
+daily |> group_by(dow) |> summarise(mean_peak = round(mean(peak)), .groups = "drop")
+```
+
+```{r explore yearly}
+ggplot(daily, aes(month,peak)) +
+    geom_boxplot(fill = "steelblue", alpha = 0.6)+
+    labs(x = NULL, y = "daily peak demand (MW)") +
+    theme_minimal()
+daily |> group_by(month) |> summarise(mean_peak = round(mean(peak)), .groups = "drop")
+```
+
+```{r explore trend}
+daily |> 
+    filter(month(date) %in% 6:8) |> 
+    group_by(year) |>
+    summarise(days = n(),
+              mean_peak = round(mean(peak)), 
+              max_peak = round(max(peak)),
+              .groups = "drop") 
+
+```
+
+```{r explore mstl}
+y <- msts(daily$peak, seasonal.periods = c(7, 365.25))
+
+fit_mstl <- mstl(y)
+autoplot(fit_mstl)
+```
+
+```{r ACF and PACF}
+ggtsdisplay(daily$peak, lag.max = 42)
+```
+
+```{r explore remainder}
+
+daily$remainder <- as.numeric(fit_mstl[, "Remainder"])
+
+daily |>
+  filter(abs(remainder) > 3 * sd(remainder)) |>
+  select(date, dow, peak, remainder) |>
+  arrange(date)
+
+
+daily |>
+  arrange(peak) |>
+  select(date, dow, peak) |>
+  head(10)
+```
+
 ## Design the Comparison
+```{r train test}
+h_test <- 365
+n <- nrow(daily)
+train <- daily[1:(n - h_test), ]
+test <- daily[(n - h_test + 1):n, ]
+
+cat("train:", format(min(train$date)), "to", format(max(train$date)), "-", nrow(train), "days\n")
+cat("test: ", format(min(test$date)),  "to", format(max(test$date)),  "-", nrow(test),  "days\n")
+```
+
+```{r benchmark}
+source(here::here("projects", "project-03-eskom-demand", "R", "evaluation_functions.R"))
+
+y <- daily$peak
+idx <- (n - h_test + 1):n
+actual <- y[idx]
+
+bench <- tibble::tibble(
+    date = test$date,
+    actual = actual,
+    naive_1 = y[idx-1],
+    snaive_1 = y[idx-7],
+    naive_7 = y[idx-7],
+    eskom_1 = test$eskom_fc
+)
+
+sum(is.na(bench$eskom_1))
+
+res_h1 <- rbind(
+    Naive = point_metrics(bench$actual, bench$naive_1),
+    Seasonal_Naive = point_metrics(bench$actual, bench$snaive_1),
+    Eskom = point_metrics(bench$actual, bench$eskom_1)
+)
+
+round(res_h1, 2)
+```
+
+```{r check interval}
+source(here::here("projects", "project-03-eskom-demand", "R", "evaluation_functions.R"))
+
+crps_norm(actual = 0, mu = 0, sigma = 1)
+coverage(actual = 0, lower = -1.96, upper = 1.96)
+
+```
 
 ## Simple Exponential Smoothing (Own Code)
 
+```{r ses fit}
+source(here::here("projects", "project-03-eskom-demand", "R", "es_functions.R"))
+
+y_train <- train$peak
+l0 <- y_train[1]
+
+fit_ses <- nlm(ses_sse, p = 0, y = y_train, l0 = l0)
+alpha_hat <- 1/(1 + exp(-fit_ses$estimate))
+
+c(alpha = alpha_hat, SSE = fit_ses$minimum, code = fit_ses$code)
+
+ref <- ses(ts(y_train), initial = "simple", h = 1)
+ref$model$par["alpha"]
+```
+
+
+
 ## Holt-Winters and ETS
+
+```{r ets fit}
+y7 <- ts(train$peak, frequency = 7)
+actual_tr <- train$peak
+fits <- list(
+    "ETS(A,N,A)"  = ets(y7, model = "ANA"),
+    "ETS(A,A,A)"  = ets(y7, model = "AAA", damped = FALSE),
+    "ETS(A,Ad,A)" = ets(y7, model = "AAA", damped = TRUE),
+    "ETS(M,N,M)"  = ets(y7, model = "MNM"),
+    "ETS(M,A,M)"  = ets(y7, model = "MAM", damped = FALSE),
+    "ETS(M,Ad,M)" = ets(y7, model = "MAM", damped = TRUE)
+    )
+getpar <- function(f, nm) unname(f$par[nm])
+ets_table <- data.frame(
+    model = names(fits),
+    AIC = sapply(fits, function(f) f$aicc),
+    alpha = sapply(fits, getpar, nm = "alpha"),
+    beta  = sapply(fits, getpar, nm = "beta"),
+    gamma = sapply(fits, getpar, nm = "gamma"),
+    phi   = sapply(fits, getpar, nm = "phi")
+)
+
+ets_table <- ets_table[order(ets_table$AIC), ]
+
+train_scores <- function(actual, fc, sigma) {
+  c(point_metrics(actual, fc),
+    Cover95 = coverage(actual, fc - 1.96 * sigma, fc + 1.96 * sigma),
+    CRPS    = crps_norm(actual, fc, sigma))
+}
+
+score_fit <- function(f) {
+  fc    <- as.numeric(fitted(f))
+  sigma <- sqrt(f$sigma2)
+  if (f$components[1] == "M") sigma <- sigma * fc   
+  train_scores(actual_tr, fc, sigma)
+}
+
+train_tab <- t(sapply(fits[ets_table$model], score_fit))   
+
+ets_results <- cbind(ets_table[, -1], train_tab)
+round(ets_results, 4)
+```
+
+```{r ets chosen}
+
+fit_ets <- fits[["ETS(A,A,A)"]]
+fit_ets            # smoothing parameters, initial states, sigma, AIC
+autoplot(fit_ets)  # level and weekly seasonal states over time
+```
+
+```{r ets fitted plot}
+
+st  <- fit_ets$states               
+win <- (nrow(train) - 41):nrow(train) 
+
+plot_df <- data.frame(
+  date     = train$date[win],
+  observed = train$peak[win],
+  fitted   = as.numeric(fitted(fit_ets))[win],  
+  level    = st[win + 1, "l"]                    
+)
+
+ggplot(plot_df, aes(x = date)) +
+  geom_line(aes(y = observed, colour = "observed")) +
+  geom_line(aes(y = fitted,   colour = "fitted (one-step forecast)"), linetype = "dashed") +
+  geom_line(aes(y = level,    colour = "level")) +
+  labs(x = NULL, y = "daily peak (MW)", colour = NULL)
+```
+
+```{r ets test 1 day}
+y_all <- ts(daily$peak, frequency = 7)
+
+one_step <- function(fit){
+    f_all <- ets(y_all, model = fit, use.initial.values = TRUE)
+    print(all.equal(as.numeric(fitted(f_all))[1:nrow(train)], as.numeric(fitted(fit))))
+    as.numeric(fitted(f_all))[idx]
+}
+
+bench$ets_aaa <- one_step(fits[["ETS(A,A,A)"]])
+
+results <- rbind(
+    Naive = point_metrics(bench$actual, bench$naive_1),
+    SeasonalNaive = point_metrics(bench$actual, bench$snaive_1),
+    Eskom = point_metrics(bench$actual, bench$eskom_1),
+    ETS_AAA = point_metrics(bench$actual, bench$ets_aaa)
+)
+
+round(results,2)
+
+```
+
+```{r ets intervals}
+sg <- sqrt(fits[["ETS(A,A,A)"]]$sigma2)
+
+bench$lo <- bench$ets_aaa - 1.96 * sg
+bench$hi <- bench$ets_aaa + 1.96 * sg
+bench$outside <- bench$actual < bench$lo | bench$actual > bench$hi
+
+c(Cover95 = coverage(bench$actual, bench$lo, bench$hi), 
+  CRPS = crps_norm(bench$actual, bench$ets_aaa, sg))
+
+ggplot(bench, aes(x = date))+
+    geom_ribbon(aes(ymin = lo, ymax = hi), fill = "grey80", alpha = 0.2) +
+    geom_line(aes(y = ets_aaa, colour = "ETS(A,A,A) forecast")) +
+    geom_line(aes(y = actual, colour = "actual"), alpha = 0.7) +
+    geom_point(data = subset(bench, outside), aes(y = actual), colour = "red", size = 1.5) +
+    labs(x = NULL, y = "daily peak (MW)", colour = NULL, caption = "Grey band: 95% interval. Red points: actuals outside it.") +
+    theme_minimal()
+
+```
+
+
+```{r ets quarter intervals}
+
+bench$qtr <- paste0(year(bench$date), " Q", quarter(bench$date))
+
+ggplot(bench, aes(x = date)) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), fill = "steelblue", alpha = 0.25) +
+  geom_line(aes(y = actual, colour = "actual")) +
+  geom_line(aes(y = ets_aaa, colour = "ETS(A,A,A) forecast"), linetype = "dashed") +
+  geom_point(data = subset(bench, outside), aes(y = actual), colour = "red", size = 1.5) +
+  facet_wrap(~ qtr, ncol = 1, scales = "free_x") +
+  labs(x = NULL, y = "daily peak (MW)", colour = NULL) +
+  theme_minimal()
+```
+
+
+```{r ets test 7 day}
+horizon <- 7
+origins <- (n - h_test + 1 - horizon):(n - horizon)
+
+fc7 <- t(sapply(origins, function(x) {
+    f <- ets(ts(y[1:x], frequency = 7), model = fits[["ETS(A,A,A)"]], use.initial.values = TRUE)
+    fc <- forecast(f, h = horizon, level = 95)
+    c(mean = fc$mean[horizon], lo = fc$lower[horizon], hi = fc$upper[horizon])
+}))
+
+bench$ets7 <- fc7[, "mean"]
+bench$ets7_lo <- fc7[, "lo"]
+bench$ets7_hi <- fc7[, "hi"]
+
+sd7 <- (bench$ets7_hi - bench$ets7_lo) / (2 * 1.96)
+
+res_h7 <- rbind(
+    Naive_7 = c(point_metrics(bench$actual, bench$naive_7), Cover95 = NA, CRPS = NA),
+    ETS_AAA = c(point_metrics(bench$actual, bench$ets7), 
+                Cover95 = coverage(bench$actual, bench$ets7_lo, bench$ets7_hi), 
+                CRPS = crps_norm(bench$actual, bench$ets7, sd7))
+)
+
+round(res_h7, 3)
+```
+
+
+```{r ets vs eskom plot}
+
+bench$panel <- ceiling(seq_len(nrow(bench)) / 92)
+bench$panel <- factor(bench$panel, labels = tapply(format(bench$date, "%b %Y"), bench$panel, function(x) paste(x[1], "to", x[length(x)])))
+
+ggplot(bench, aes(x = date)) +
+  geom_line(aes(y = actual, colour = "actual"), linewidth = 0.9) +
+  geom_line(aes(y = ets_aaa, colour = "ETS(A,A,A) forecast"), linewidth = 0.6) +
+  geom_line(aes(y = eskom_1, colour = "Eskom forecast"), linewidth = 0.6) +
+  scale_colour_manual(values = c("actual" = "blue",
+                                 "ETS(A,A,A) forecast" = "green",
+                                 "Eskom forecast" = "red")) +
+  facet_wrap(~ panel, ncol = 1, scales = "free_x") +
+  labs(title = "One-day-ahead forecasts on the test year: ETS(A,A,A) vs Eskom",
+       x = NULL, y = "daily peak (MW)", colour = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
 
 ## Exponential Smoothing Diagnostics
 
+```{r ets diagnostic}
+
+checkresiduals(fit_ets, lag = 28)
+
+```
+
 ## Time Series Regression (OLS)
+
+```{r holidays}
+
+hol <- tibble::tibble(
+  date = as.Date(c(
+    # 2022
+    "2022-04-15","2022-04-18","2022-04-27","2022-05-02","2022-06-16","2022-08-09",
+    "2022-12-16","2022-12-26","2022-12-27",
+    # 2023
+    "2023-01-02","2023-03-21","2023-04-07","2023-04-10","2023-04-27","2023-05-01",
+    "2023-06-16","2023-08-09","2023-09-25","2023-12-15","2023-12-25","2023-12-26",
+    # 2024
+    "2024-01-01","2024-03-21","2024-03-29","2024-04-01","2024-05-01","2024-05-29",
+    "2024-06-17","2024-08-09","2024-09-24","2024-12-16","2024-12-25","2024-12-26",
+    # 2025
+    "2025-01-01","2025-03-21","2025-04-18","2025-04-21","2025-04-28","2025-05-01",
+    "2025-06-16","2025-09-24","2025-12-16","2025-12-25","2025-12-26",
+    # 2026
+    "2026-01-01","2026-04-03","2026-04-06","2026-04-27","2026-05-01","2026-06-16",
+    "2026-08-10","2026-09-24"))
+)
+
+# checks: all weekdays and all inside the data range
+table(wday(hol$date, week_start = 1))
+all(hol$date >= min(daily$date) & hol$date <= max(daily$date))
+
+daily$holiday <- daily$date %in% hol$date
+
+# do holidays really show up as low demand?
+daily |> filter(holiday) |> summarise(n = n(), mean_remainder = mean(remainder))
+
+# big negative remainders NOT on the list = possible missing holidays or bridge days
+daily |> filter(!holiday, remainder < -2 * sd(remainder)) |>
+  select(date, peak, remainder) |> arrange(remainder)
+
+daily |>
+  filter(!holiday, remainder < -2 * sd(remainder)) |>
+  mutate(weekday = wday(date, label = TRUE, week_start = 1)) |>
+  select(date, weekday, peak, remainder) |>
+  arrange(date) |>
+  print(n = 28)
+```
+
+```{r regressors}
+easter_sun  <- as.Date(c("2022-04-17", "2023-04-09", "2024-03-31", "2025-04-20", "2026-04-05"))
+easter_days <- c(easter_sun - 3, easter_sun - 1, easter_sun)
+
+md <- format(daily$date, "%m-%d")
+
+daily$holiday <- daily$date %in% hol$date
+daily$easter  <- daily$date %in% easter_days
+daily$yearend <- md >= "12-24" | md <= "01-02"
+
+# checks: expect 52, 15 and 40
+colSums(daily[, c("holiday", "easter", "yearend")])
+
+# re-split so that train and test carry the new columns (same rows as before)
+train <- daily[1:(n - h_test), ]
+test  <- daily[(n - h_test + 1):n, ]
+```
+
+```{r regression k}
+t0 <- min(daily$date)
+
+reg_data <- function(df,K){
+    tt  <- as.numeric(df$date - t0) + 1
+  out <- data.frame(peak = df$peak, t = tt,
+                    dow  = factor(wday(df$date, week_start = 1), levels = 1:7,
+                                  labels = c("Mon","Tue","Wed","Thu","Fri","Sat","Sun")))
+  for (k in 1:K) {
+    out[[paste0("S", k)]] <- sin(2 * pi * k * tt / 365.25)
+    out[[paste0("C", k)]] <- cos(2 * pi * k * tt / 365.25)
+  }
+  out
+}
+
+aicc <- function(fit){
+    k <- length(coef(fit)) + 1
+    n <- nobs(fit)
+    AIC(fit) + 2 * k * (k + 1) / (n - k - 1)
+}
+
+K_tab <- sapply(1:10, function(K) {
+  fit <- lm(peak ~ ., data = reg_data(train, K))
+  c(K = K, AICc = aicc(fit), RMSE = sqrt(mean(residuals(fit)^2)))
+})
+round(t(K_tab), 1)
+
+```
+
+```{r regression K full}
+
+reg_data <- function(df, K, extras = TRUE) {
+  tt  <- as.numeric(df$date - t0) + 1
+  out <- data.frame(peak = df$peak, t = tt,
+                    dow  = factor(wday(df$date, week_start = 1), levels = 1:7,
+                                  labels = c("Mon","Tue","Wed","Thu","Fri","Sat","Sun")))
+  if (extras) {
+    out$holiday <- as.numeric(df$holiday)
+    out$easter  <- as.numeric(df$easter)
+    out$yearend <- as.numeric(df$yearend)
+  }
+  for (k in 1:K) {
+    out[[paste0("S", k)]] <- sin(2 * pi * k * tt / 365.25)
+    out[[paste0("C", k)]] <- cos(2 * pi * k * tt / 365.25)
+  }
+  out
+}
+
+K_full <- sapply(1:10, function(K) {
+  fit <- lm(peak ~ ., data = reg_data(train, K, extras = TRUE))
+  c(K = K, AICc = aicc(fit), RMSE = sqrt(mean(residuals(fit)^2)))
+})
+round(t(K_full), 1)
+```
+
+```{r regression fit}
+
+K_opt <- 9
+
+d_full <- reg_data(train, K_opt, extras = TRUE)
+
+fit_reg0 <- lm(peak ~ ., data = reg_data(train, K_opt, extras = FALSE))                      
+fit_reg1 <- lm(peak ~ ., data = d_full[, !names(d_full) %in% c("easter", "yearend")])   
+fit_reg2 <- lm(peak ~ ., data = d_full)                                                      
+
+rmse_tr <- sapply(list(base = fit_reg0, holiday = fit_reg1, full = fit_reg2),
+                  function(f) sqrt(mean(residuals(f)^2)))
+round(rmse_tr, 1)
+
+cf <- coef(summary(fit_reg2))
+round(cf[!grepl("^(S|C)[0-9]", rownames(cf)), ], 2)
+```
+
+```{r reg test socres}
+
+d_test <- reg_data(test, K_opt, extras = TRUE)
+
+newdata_list <- list(
+  base    = reg_data(test, K_opt, extras = FALSE),
+  holiday = d_test[, !names(d_test) %in% c("easter", "yearend")],
+  full    = d_test
+)
+fits_reg <- list(base = fit_reg0, holiday = fit_reg1, full = fit_reg2)
+
+score_reg <- function(fit, newd) {
+  p  <- predict(fit, newdata = newd, interval = "prediction", level = 0.95)
+  sd <- (p[, "upr"] - p[, "lwr"]) / (2 * qt(0.975, fit$df.residual))
+  c(point_metrics(bench$actual, p[, "fit"]),
+    Cover95 = coverage(bench$actual, p[, "lwr"], p[, "upr"]),
+    CRPS    = crps_norm(bench$actual, p[, "fit"], sd))
+}
+
+res_reg <- t(sapply(names(fits_reg), function(nm) score_reg(fits_reg[[nm]], newdata_list[[nm]])))
+round(res_reg, 3)
+```
 
 ## Regression with ARMA Errors
 
@@ -27,3 +523,4 @@ format: html
 ## Discussion
 
 ## References
+
