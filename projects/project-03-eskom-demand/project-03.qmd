@@ -514,8 +514,132 @@ res_reg <- t(sapply(names(fits_reg), function(nm) score_reg(fits_reg[[nm]], newd
 round(res_reg, 3)
 ```
 
-## Regression with ARMA Errors
 
+```{r reg bias}
+p_full <- predict(fit_reg2, newdata = newdata_list$full)
+err <- bench$actual - p_full
+
+block <- ceiling(seq_len(nrow(bench)) / 92)
+data.frame(block = 1:4, from = tapply(format(bench$date), block, function(x) x[1]), to = tapply(format(bench$date), block, function(x) x[length(x)]), mean_error = round(tapply(err, block, mean), 0))
+
+
+```
+
+```{r reg train resid}
+res_tr <- residuals(fit_reg2)
+blk <- ceiling(seq_along(res_tr)/319)
+
+data.frame(block = 1:4, from = tapply(format(train$date), blk, function(x) x[1]), to = tapply(format(train$date), blk, function(x) x[length(x)]), mean_resid = round(tapply(res_tr, blk, mean), 0))
+
+```
+
+```{r reg forecast plot}
+bench$reg_full <- as.numeric(predict(fit_reg2, newdata = newdata_list$full))
+bench$panel <- ceiling(seq_len(nrow(bench)) / 92)
+bench$panel <- factor(bench$panel, labels = tapply(format(bench$date, "%b %Y"), bench$panel, function(x) paste(x[1], "to", x[length(x)])))
+
+ggplot(bench, aes(x = date)) +
+    geom_line(aes(y = actual, colour = "actual"), linewidth = 0.9) +
+    geom_line(aes(y = reg_full, colour = "regression forecast"), linewidth = 0.6) +
+    scale_colour_manual(values = c("actual" = "blue", "regression forecast" = "firebrick")) +
+    facet_wrap( ~ panel, ncol = 1, scales = "free_x") +
+    labs(title = "Regression forecast vs actual on the test year", x = NULL, y = "daily peak (MW)", colour = NULL) +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+
+```
+
+```{r reg residuals}
+checkresiduals(fit_reg2, lag = 28)
+
+```
+
+## Regression with ARMA Errors
+```{r reg PACF}
+ggtsdisplay(residuals(fit_reg2), lag.max = 28)
+
+```
+
+
+
+```{r reg ARMA models}
+
+make_xreg <- function(x) {
+  X <- model.matrix(peak ~ ., data = x)[, -1]
+  X[, "t"] <- X[, "t"] / 1000
+  X
+}
+
+d_train <- reg_data(train, K_opt)
+d_test  <- reg_data(test,  K_opt)
+
+xreg_train <- make_xreg(d_train)
+xreg_test  <- make_xreg(d_test)
+
+orders <- list("AR(1)" = c(1,0,0), "AR(2)" = c(2,0,0), "AR(3)" = c(3,0,0),
+               "ARMA(1,1)" = c(1,0,1), "ARMA(2,1)" = c(2,0,1))
+
+fits_arma <- lapply(orders, function(x)
+  arima(d_train$peak, order = x, xreg = xreg_train,
+        include.mean = TRUE, method = "ML"))
+
+arma_table <- data.frame(
+  Model = names(fits_arma),
+  AICc  = sapply(fits_arma, function(x) {
+    k <- length(coef(x)) + 1; n <- x$nobs
+    AIC(x) + 2*k*(k+1)/(n-k-1)
+  }),
+  RMSE_train = sapply(fits_arma, function(x) sqrt(x$sigma2))
+)
+
+arma_table[order(arma_table$AICc), ]
+```
+
+```{r reg arma chosen}
+fit_arma <- fits_arma[["AR(1)"]]
+fit_arma$coef[c("ar1", "intercept")]
+
+ggtsdisplay(residuals(fit_arma), lag.max = 28)
+```
+
+```{r reg arma test 1 day}
+y_all <- c(d_train$peak, d_test$peak)
+xreg_all <- rbind(xreg_train, xreg_test)
+
+fit_all <- arima(y_all, order = c(1,0,0), xreg = xreg_all, include.mean = TRUE, fixed = coef(fit_arma), transform.pars = FALSE, method = "ML")
+
+all.equal(as.numeric(residuals(fit_all))[1:nrow(train)], as.numeric(residuals(fit_arma)), tolerance = 1e-4)
+
+fc_all <- y_all - as.numeric(residuals(fit_all))
+bench$arma1 <- fc_all[idx]
+
+sg <- sqrt(fit_arma$sigma2)
+bench$arma1_lo <- bench$arma1 - 1.96 *sg
+bench$arma1_hi <- bench$arma1 + 1.96 * sg
+
+res_arma <- c(point_metrics(actual,bench$arma1), Cover95 = coverage(actual, bench$arma1_lo, bench$arma1_hi), CRPS = crps_norm(actual , bench$arma1, sg))
+
+round(res_arma, 3)
+
+```
+
+```{r reg arma 1 forecast}
+bench$panel <- factor(ceiling(seq_len(nrow(bench)) / 92),
+                      labels = c("Oct-Dec", "Jan-Mar", "Apr-Jun", "Jul-Sep"))
+
+ggplot(bench, aes(x = date)) +
+  geom_line(aes(y = actual, colour = "actual"), linewidth = 0.9) +
+  geom_line(aes(y = arma1, colour = "Regression + AR(1) forecast"), linewidth = 0.6) +
+  geom_line(aes(y = eskom_1, colour = "Eskom forecast"), linewidth = 0.6) +
+  facet_wrap(~ panel, ncol = 1, scales = "free_x") +
+  scale_colour_manual(values = c("actual" = "grey30",
+                                 "Regression + AR(1) forecast" = "firebrick",
+                                 "Eskom forecast" = "steelblue")) +
+  labs(x = NULL, y = "Daily peak demand (MW)", colour = NULL,
+       title = "Regression with AR(1) errors: 1-day-ahead forecasts, test year") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
 ## Compare Models
 
 ## Forecast and Report
