@@ -15,6 +15,18 @@ daily <- readRDS(here::here("data", "eskom_daily_peak.rds"))
 ```
 
 ## Introduction
+In Projects 1 and 2 I worked with daily AAPL returns. The models found very little structure in the mean of the returns, and the main problem turned out to be volatility that changes over time. This project moves to a series with a lot of structure in the mean. Electricity demand depends on the day of the week, the time of year and public holidays, which makes it a good series for the Section 2 methods, exponential smoothing and time series regression. The two approaches handle this structure in different ways. Exponential smoothing updates a level and a seasonal pattern as each new day comes in, while regression describes demand as a fixed function of time and the calendar.
+
+I have used Eskom's daily peak electricity demand from April 2022 to September 2026 and keep the last 365 days as a test year. The data also include Eskom's own day-ahead forecast, which gives a real forecast to compare against, not only simple benchmarks. I compare exponential smoothing models with a time series regression, first fitted by OLS and then with ARMA errors, at one day and seven days ahead.
+
+This project asks three questions.
+
+1. Which approach, exponential smoothing or time series regression, better captures the weekly and yearly cycles in South African daily peak demand?
+2. Can either approach match or do better then Eskom's own day-ahead forecast?
+3. How reliable are the prediction intervals of each approach, one day and seven days ahead?
+
+I judge the models on the test year, using the RMSE, MAE and MAPE for the point forecasts and the 95% coverage and CRPS for the intervals.
+
 
 ## Define the Series
 
@@ -30,7 +42,13 @@ round(prop.table(table(daily$peak_hour)),3)
 
 ```
 
+The data used in this project comes from the Eskom file ESK19847. Each day in the file has 24 hourly demand values, and I have used the highest of these as the daily peak. The daily peak is the series I have forecasted. Eskom's own day-ahead forecast in the file is a forecast of this same quantity, which has allowed me to compare my models output to that of theirs.
 
+The series runs from 1 April 2022 to 27 September 2026, which is 1 641 days. There are no gaps between the dates and every day has all 24 hourly values. I also found no missing values in the peak, so I did not have to fill in or remove any days.
+
+Daily peak demand ranges from 21,262 MW to 34,666 MW. The median is 28,892 MW and the mean is 28,802 MW, so the series is not skewed much in either direction. Half of the days sit between 27,256 MW and 30,410 MW.
+
+The peak almost always happens in the evening. On 62.8% of days it falls in hour 18 and on 35.8% of days in hour 19, which is 98.6% of all days. The remaining days peak at different hours, but none of those hours makes up more than 0.4% of the days. Because nearly every peak comes from the same two hours, the daily maximum measures the same thing from one day to the next.
 
 ## Explore
 
@@ -41,6 +59,8 @@ ggplot(daily, aes(date, peak)) +
     theme_minimal()
 ```
 
+The time plot shows the daily peak over the full data set. We can see that demand rises every winter and falls back in summer, with a sharp drop at the end of each December. The winter peaks also get lower each year, from 34,666 MW in 2022 to 30,749 MW in 2026, so the overall level of demand is falling.
+
 ```{r explore peak hour}
 ggplot(daily, aes(factor(peak_hour, levels = 0:23))) +
     geom_bar(fill = "steelblue")+
@@ -48,6 +68,8 @@ ggplot(daily, aes(factor(peak_hour, levels = 0:23))) +
     labs(x = "Hour behginning", y = "number of days") +
     theme_minimal()
 ```
+
+The bar chart shows the hour in which each day's peak occurs. Almost every day peaks in the hour beginning at 18:00 or the hour beginning at 19:00. The few other days peak in the morning or the afternoon, and none of those hours has more than a handful of days. This is where we get our peak variable from, that we will use to forecast.
 
 ```{r explore weekly}
 daily <- daily |>
@@ -63,6 +85,8 @@ ggplot(daily, aes(dow, peak)) +
 daily |> group_by(dow) |> summarise(mean_peak = round(mean(peak)), .groups = "drop")
 ```
 
+The boxplot shows the daily peak for each day of the week. Monday to Thursday are around a similar peak, with mean peaks between 29,440 MW and 29,593 MW. Friday is lower at 28,294 MW, and Saturday (27,568 MW) and Sunday (27,688 MW) are about 1,900 MW below the midweek days. The low outliers on the weekdays are mostly public holidays and year-end days that fall on a weekday. This weekly cycle is why I use a seasonal period of 7 in the exponential smoothing models and weekday indicators in the regression.
+
 ```{r explore yearly}
 ggplot(daily, aes(month,peak)) +
     geom_boxplot(fill = "steelblue", alpha = 0.6)+
@@ -70,6 +94,8 @@ ggplot(daily, aes(month,peak)) +
     theme_minimal()
 daily |> group_by(month) |> summarise(mean_peak = round(mean(peak)), .groups = "drop")
 ```
+
+The monthly boxplots shows the yearly cycle. Demand is highest in June (30,910 MW) and July (30,864 MW) and lowest in December (26,296 MW) and January (26,848 MW). The gap between the highest and lowest month is about 4,600 MW, more than twice the weekly swing. April has low outliers due to easter falling every year. December has the widest spread because it contains both normal working days and the very low days of year-end holidays.
 
 ```{r explore trend}
 daily |> 
@@ -82,6 +108,8 @@ daily |>
 
 ```
 
+To see whether demand is changing over the years, I compared the same three winter months, June to August, in each year, so that the yearly cycle does not affect the comparison. The mean winter peak fell every year, from 31,679 MW in 2022 to 28,394 MW in 2026, and the highest winter peak fell from 34,666 MW to 30,749 MW. The fall from 2025 to 2026 was 1,696 MW, which is much larger than the falls between the earlier years of 450 MW to 680 MW. The winter of 2026 is inside my test year, so the models meet this larger drop out of sample.
+
 ```{r explore mstl}
 y <- msts(daily$peak, seasonal.periods = c(7, 365.25))
 
@@ -89,9 +117,13 @@ fit_mstl <- mstl(y)
 autoplot(fit_mstl)
 ```
 
+To see the two cycles and the trend separately, I have decomposed the series with MSTL using periods of 7 and 365.25 days. The trend stays near 30,000 MW for the first year, then falls, and falls faster from early 2025 to end near 26,200 MW. The yearly component is about 2,000 to 3,000 MW above the trend in winter and drops to almost 6,000 MW below it at the end of each December. The weekly component moves by about 1,000 to 2,000 MW either way, and its size changes through the year. The remainder is mostly within 1,500 MW of zero, with a few larger spikes that I look at below.
+
 ```{r ACF and PACF}
 ggtsdisplay(daily$peak, lag.max = 42)
 ```
+
+The ACF of the daily peak is very high at every lag up to 42 days and dies down slowly, with peaks at lags 7, 14, 21 and so on. The slow decay comes from the slowly moving level and the yearly cycle, and the peaks every seven lags come from the weekly cycle. The PACF has a large spike at lag 1 and more spikes around lags 6 to 8, which again points to the weekly cycle. The series is therefore not stationary, and the models in this project deal with this through the level and seasonal terms in exponential smoothing and the trend and seasonal terms in the regression.
 
 ```{r explore remainder}
 
@@ -108,6 +140,11 @@ daily |>
   select(date, dow, peak) |>
   head(10)
 ```
+To find unusual days, I listed the days where the MSTL remainder is more than three standard deviations from zero. There are 15 of these. Nine are too low, and seven of the nine are around Easter. The other two low days are 29 May 2024, which was a public holiday for the national election, and 20 March 2023, the Monday before the Human Rights Day holiday. I cannot explain the six high days from the calendar, and without weather data I cannot check whether they were cold days.
+
+The year-end days are not in this list, even though they are the lowest days in the series. They fall on the same dates every year, so MSTL puts them into the yearly component. Easter moves from year to year, so it ends up in the remainder instead. This is why I add separate Easter and year-end indicators to the regression and do not rely on the Fourier terms alone.
+
+The ten lowest days in the series are all public holidays or days in the year-end break. Eight of them are from the break between 24 December 2025 and 2 January 2026, and the lowest is 1 January 2026 at 21,262 MW. Nine of the ten fall inside my test year, so the test year contains the most extreme low days in the data.
 
 ## Design the Comparison
 ```{r train test}
@@ -119,6 +156,8 @@ test <- daily[(n - h_test + 1):n, ]
 cat("train:", format(min(train$date)), "to", format(max(train$date)), "-", nrow(train), "days\n")
 cat("test: ", format(min(test$date)),  "to", format(max(test$date)),  "-", nrow(test),  "days\n")
 ```
+
+I held out the last 365 days as a test set, from 28 September 2025 to 27 September 2026, and used the first 1,276 days, from 1 April 2022 to 27 September 2025, for training. The test set is a full year, so it contains every season and every public holiday once. All model parameters are estimated on the training data and kept fixed in the test year, and a forecast for a test day only uses data up to the day the forecast is made. I also choose between models using the training data only, so the test year is used for the final comparison and nothing else.
 
 ```{r benchmark}
 source(here::here("projects", "project-03-eskom-demand", "R", "evaluation_functions.R"))
@@ -146,6 +185,12 @@ res_h1 <- rbind(
 
 round(res_h1, 2)
 ```
+ 
+I compare every model against three benchmarks. The naive forecast uses the peak from the day before. The seasonal naive forecast uses the peak from the same weekday one week earlier. At the seven day horizon the latest value I have is from a week earlier, so the naive and seasonal naive forecasts are the same thing. The third benchmark is Eskom's own day-ahead forecast, which is available for every day of the test year. It is a one day ahead point forecast only, so it is not part of the seven day comparison or the interval measures.
+
+I measure point accuracy with the RMSE, MAE and MAPE. To judge the prediction intervals I use the coverage of the 95% interval, which should be close to 0.95, and the CRPS. The CRPS scores the whole forecast distribution and is lower when the forecast is close to the actual value without being wider than it needs to be. 
+
+The table gives the one-day-ahead scores of the benchmarks on the test year. Eskom's forecast has an RMSE of 623 MW, against 959 MW for the naive forecast and 1,059 MW for the seasonal naive forecast. Using yesterday's peak works better than using the same weekday last week. Eskom's forecast is clearly the strongest, with an MAE of 494 MW and a MAPE of 1.86%, and this is the standard the models in the next sections are measured against.
 
 ```{r check interval}
 source(here::here("projects", "project-03-eskom-demand", "R", "evaluation_functions.R"))
@@ -154,6 +199,8 @@ crps_norm(actual = 0, mu = 0, sigma = 1)
 coverage(actual = 0, lower = -1.96, upper = 1.96)
 
 ```
+
+I have computed the CRPS and coverage with the closed form for a normal forecast distribution. As a check, my function gives 0.2337 for an observation at the mean of a standard normal, which matches (√2 − 1)/√π.
 
 ## Simple Exponential Smoothing (Own Code)
 
@@ -172,9 +219,13 @@ ref <- ses(ts(y_train), initial = "simple", h = 1)
 ref$model$par["alpha"]
 ```
 
+I started with simple exponential smoothing, which I coded by hand and fitted by minimising the sum of squared one-step errors with nlm(). The estimated alpha was 1, and ses() from the forecast package gave the same value. An alpha of 1 means each forecast is just the last observed value, so simple exponential smoothing reduces to the naive forecast. The series has a weekly cycle and simple exponential smoothing has no way to include it, so the best it can do is follow yesterday's value. This is why I moved on to models with a seasonal component.
+
 
 
 ## Holt-Winters and ETS
+
+I then fitted six ETS models to the training data with a weekly seasonal period of 7. Three have additive errors and seasonality and three have multiplicative errors and seasonality, and within each group there is a model with no trend, a linear trend and a damped trend. The table gives the AICc and smoothing parameters of each model, together with the scores of its one-step fitted values on the training data.
 
 ```{r ets fit}
 y7 <- ts(train$peak, frequency = 7)
@@ -218,12 +269,18 @@ ets_results <- cbind(ets_table[, -1], train_tab)
 round(ets_results, 4)
 ```
 
+ETS(A,A,A) has the lowest AICc at 25,369.25. ETS(A,N,A) and ETS(A,Ad,A) are within 1.3 of it, and their training RMSEs are all within 1.3 MW of each other, so the three additive models fit about equally well. ETS(M,Ad,M) has the lowest training RMSE (564.9 MW against 575.8 MW) and CRPS, but its AICc is 23 higher than ETS(A,A,A). I chose ETS(A,A,A) on AICc, since AICc takes the number of parameters into account, as well as ETS models are entirely statistical and maximise a likelihood function, AICc will perfectly balance how well the model fits your training data against its complexity, preventing it from overfitting before it hits your test data. All six models cover close to 95% of the training values with their 95% intervals.
+
 ```{r ets chosen}
 
 fit_ets <- fits[["ETS(A,A,A)"]]
-fit_ets            # smoothing parameters, initial states, sigma, AIC
-autoplot(fit_ets)  # level and weekly seasonal states over time
+fit_ets            
+autoplot(fit_ets)  
 ```
+
+In ETS(A,A,A) alpha is 0.91, so the level moves most of the way to each new observation. Beta (0.0017) and gamma (0.0001) are close to zero, so the slope and the weekly pattern hardly change over the training period. The seven seasonal values range from −1 317 MW to +835 MW, a weekly swing of about 2 150 MW, and three of them are negative, which fits the three low days (Friday, Saturday and Sunday) seen in the EDA. The standard deviation of the one-step errors is 578 MW.
+
+The component plot shows that the level carries the yearly cycle, with highs in winter and a sharp dip at each year-end. The model only has a weekly seasonal term, so the yearly cycle has to go into the level, and this is why alpha is so high. The slope falls from about 45 MW per day at the start to close to zero by the end of training. The seasonal panel almost looks like a solid block because the same weekly pattern repeats almost unchanged for 182 weeks.
 
 ```{r ets fitted plot}
 
@@ -244,6 +301,8 @@ ggplot(plot_df, aes(x = date)) +
   labs(x = NULL, y = "daily peak (MW)", colour = NULL)
 ```
 
+The plot shows the last six weeks of the training data. The level follows the observed values closely, and the fitted values add the weekly pattern on top of the level, so they rise and fall with the weekdays and the weekends. When demand changes suddenly, as seen at the end of the plot, the fitted value misses on that day and the level catches up on the next day.
+e
 ```{r ets test 1 day}
 y_all <- ts(daily$peak, frequency = 7)
 
@@ -266,7 +325,11 @@ round(results,2)
 
 ```
 
-```{r ets intervals}
+To forecast the test year I ran the training model over the full series without re-estimating it. The fitted values on the training part matched the original fit exactly, so the test forecasts only use the training parameters. One day ahead, ETS(A,A,A) has an RMSE of 599.88 MW, an MAE of 442.86 MW and a MAPE of 1.68%, against 622.80 MW, 493.57 MW and 1.86% for Eskom's own 1 day ahead forecast. We can see that ETS(A,A,A) is lower than Eskom on all three measures. This shows our model outperforms our benchmark.
+
+
+
+```{r ets quarter intervals}
 sg <- sqrt(fits[["ETS(A,A,A)"]]$sigma2)
 
 bench$lo <- bench$ets_aaa - 1.96 * sg
@@ -275,32 +338,25 @@ bench$outside <- bench$actual < bench$lo | bench$actual > bench$hi
 
 c(Cover95 = coverage(bench$actual, bench$lo, bench$hi), 
   CRPS = crps_norm(bench$actual, bench$ets_aaa, sg))
-
-ggplot(bench, aes(x = date))+
-    geom_ribbon(aes(ymin = lo, ymax = hi), fill = "grey80", alpha = 0.2) +
-    geom_line(aes(y = ets_aaa, colour = "ETS(A,A,A) forecast")) +
-    geom_line(aes(y = actual, colour = "actual"), alpha = 0.7) +
-    geom_point(data = subset(bench, outside), aes(y = actual), colour = "red", size = 1.5) +
-    labs(x = NULL, y = "daily peak (MW)", colour = NULL, caption = "Grey band: 95% interval. Red points: actuals outside it.") +
-    theme_minimal()
-
-```
-
-
-```{r ets quarter intervals}
-
-bench$qtr <- paste0(year(bench$date), " Q", quarter(bench$date))
+bench$panel <- ceiling(seq_len(nrow(bench)) / 92)
+bench$panel <- factor(bench$panel, labels = tapply(format(bench$date, "%b %Y"), bench$panel,
+                      function(x) paste(x[1], "to", x[length(x)])))
 
 ggplot(bench, aes(x = date)) +
   geom_ribbon(aes(ymin = lo, ymax = hi), fill = "steelblue", alpha = 0.25) +
   geom_line(aes(y = actual, colour = "actual")) +
   geom_line(aes(y = ets_aaa, colour = "ETS(A,A,A) forecast"), linetype = "dashed") +
   geom_point(data = subset(bench, outside), aes(y = actual), colour = "red", size = 1.5) +
-  facet_wrap(~ qtr, ncol = 1, scales = "free_x") +
-  labs(x = NULL, y = "daily peak (MW)", colour = NULL) +
+  facet_wrap(~ panel, ncol = 1, scales = "free_x") +
+  labs(x = NULL, y = "daily peak (MW)", colour = NULL,
+       caption = "Shaded band: 95% interval. Red points: actuals outside it.") +
   theme_minimal()
 ```
+The plot shows the one-day-ahead forecasts for the test year with their 95% intervals, split into four periods of 92 days. The band has the same width all year, about 1,130 MW either side of the forecast, because the interval is built from the training standard deviation of 578 MW. The intervals cover 92.6% of the actual values, so about 27 days fall outside them, and the CRPS is 327. The intervals are a little too narrow because the test errors (RMSE 600 MW) are larger than the training standard deviation.
 
+The days outside the band are not spread evenly through the year. The biggest group is at the year-end, where demand falls outside the band on both sides. It first drops below the band as the break starts, because the model does not know the holiday is coming. Then in the first days of January it is above the band, because the level has followed demand down and the forecast stays too low while demand recovers. The same pattern shows up in late April around Freedom Day and 1 May, and Heritage Day at the end of the test year also falls outside.
+
+Most of the other red points are single days where demand was higher than the band, such as 11 and 12 August 2026, when the peak jumped to about 30,600 MW. These are the same high days that stood out in the MSTL remainder in the EDA, and without weather data I cannot say what caused them. In February, March, May and June almost every day is inside the band, so the intervals work well in normal weeks and fail mainly around holidays.
 
 ```{r ets test 7 day}
 horizon <- 7
@@ -328,6 +384,7 @@ res_h7 <- rbind(
 round(res_h7, 3)
 ```
 
+At the seven day horizon, ETS(A,A,A) has an RMSE of 1 056 MW, almost the same as the seasonal naive forecast at 1,059 MW. With alpha close to 1 the model relies almost entirely on the latest value, so a week ahead its forecast is close to the value on the same weekday a week earlier, which is exactly the seasonal naive forecast. The 95% intervals cover 98.4% of the actual values, so they are too wide. Because alpha is high, each extra step ahead adds almost a full day's error to the forecast variance, and the interval widens faster than the actual errors grow.
 
 ```{r ets vs eskom plot}
 
@@ -348,6 +405,8 @@ ggplot(bench, aes(x = date)) +
   theme(legend.position = "bottom")
 ```
 
+Through most of the year the ETS and Eskom forecasts are close to each other and to the actual demand. The biggest misses for ETS are around holidays. ETS does not know a holiday is coming, so it misses the drop on the day and then forecasts too low on the next day, because the level has fallen with the holiday. This shows clearly at the year-end, where the ETS forecast drops to about 20 000 MW in early January while the actual demand never goes below 21 262 MW.
+
 ## Exponential Smoothing Diagnostics
 
 ```{r ets diagnostic}
@@ -355,6 +414,16 @@ ggplot(bench, aes(x = date)) +
 checkresiduals(fit_ets, lag = 28)
 
 ```
+
+The residuals of ETS(A,A,A) on the training data are centred on zero with no trend, and their spread looks about the same throughout. The largest errors are single days and are more often positive than negative, going up to about 3 000 MW against about −2 500 MW at the low end. A positive residual means demand was higher than forecast, which fits the days after a holiday, when the level has dropped and the forecast is too low.
+
+The ACF has spikes outside the bands at lags 7, 14, 21 and 28, between about 0.10 and 0.13, and negative spikes at lags 2 to 4 of about −0.12 to −0.15. The value at lag 1 is close to zero, because with alpha at 0.91 most of each day's error goes straight into the level. The Ljung-Box test over 28 lags gives Q* = 190.13 with p < 2.2e-16, so the residuals are not white noise.
+
+The spikes at multiples of 7 mean part of the weekly pattern is left over. The weekly pattern in the model is fixed, with gamma equal to 0.0001, but in the EDA the size of the weekly swing changed through the year, so in some weeks the fixed pattern is too big and in others too small. The negative values at lags 2 to 4 fit the holiday problem from the test plots, where a one-off drop is mostly passed into the level and the forecasts for the next few days are then off in the other direction.
+
+The histogram is centred on zero but is taller and narrower in the middle than the normal curve, with longer tails out to about ±2 500 MW. Most days have small errors and a few days have very large ones. The prediction intervals assume normal errors, so this is one reason they miss the extreme days in the test year.
+
+ETS(A,A,A) gives good one-day forecasts, but its residuals still contain the holidays and part of the weekly pattern. The regression in the next section adds holiday indicators and a yearly seasonal term directly, which targets the holiday problem. It still uses a fixed weekly pattern through the weekday indicators, so the left-over weekly structure may remain.
 
 ## Time Series Regression (OLS)
 
@@ -400,6 +469,10 @@ daily |>
   print(n = 28)
 ```
 
+The EDA showed that the lowest days are holidays, so before fitting the regression I built a list of South African public holidays in the data period. I only kept holidays that fall on a weekday, because a holiday on a Saturday or Sunday is already a low day and the weekday terms cover it. This gives 52 holidays, including the substitute Mondays and the special holidays such as election day on 29 May 2024. On these 52 days the MSTL remainder from the EDA has a mean of −575 MW, so holidays are clearly lower than the weekly and yearly patterns expect.
+
+To check for low days that the list misses, I looked at the non-holiday days with an MSTL remainder below minus two standard deviations. There are 28 of these. Eleven are the days around Easter that are not public holidays, the Thursday before Good Friday and the Saturday and Sunday of the Easter weekend. Two are bridge days, Mondays before a Tuesday public holiday. Another eleven are in May 2024, and four are single days I cannot link to the calendar.
+
 ```{r regressors}
 easter_sun  <- as.Date(c("2022-04-17", "2023-04-09", "2024-03-31", "2025-04-20", "2026-04-05"))
 easter_days <- c(easter_sun - 3, easter_sun - 1, easter_sun)
@@ -410,13 +483,15 @@ daily$holiday <- daily$date %in% hol$date
 daily$easter  <- daily$date %in% easter_days
 daily$yearend <- md >= "12-24" | md <= "01-02"
 
-# checks: expect 52, 15 and 40
+
 colSums(daily[, c("holiday", "easter", "yearend")])
 
-# re-split so that train and test carry the new columns (same rows as before)
+
 train <- daily[1:(n - h_test), ]
 test  <- daily[(n - h_test + 1):n, ]
 ```
+
+Based on this I added two more indicators. The Easter indicator covers the Thursday, Saturday and Sunday of each Easter weekend, which is 15 days. The year-end indicator covers 24 December to 2 January, which is 40 days over the four year-end breaks. I did not add bridge days or anything for May 2024, so those days stay in the errors.
 
 ```{r regression k}
 t0 <- min(daily$date)
@@ -473,6 +548,8 @@ K_full <- sapply(1:10, function(K) {
 round(t(K_full), 1)
 ```
 
+The regression has a linear trend, weekday indicators and K pairs of sine and cosine terms with a period of 365.25 days for the yearly cycle. I chose K by AICc on the training data. Without the holiday indicators the AICc falls from 21 298.9 at K = 1 to 20 520.5 at K = 9 and then goes up slightly at K = 10. With the holiday, Easter and year-end indicators the minimum is also at K = 9, with an AICc of 20 222.2. So I used K = 9. It takes this many terms because the yearly pattern is not a smooth wave, with a winter hump and a sharp dip at the year-end.
+
 ```{r regression fit}
 
 K_opt <- 9
@@ -490,6 +567,10 @@ round(rmse_tr, 1)
 cf <- coef(summary(fit_reg2))
 round(cf[!grepl("^(S|C)[0-9]", rownames(cf)), ], 2)
 ```
+
+I fitted the regression in three stages to see how each group of indicators improves the or doesn't improve the model. The training RMSE is 735.4 MW for the base model with trend, weekday and Fourier terms. Adding the holiday indicator brings it down to 681.3 MW, and adding the Easter and year-end indicators brings it down to 652.6 MW. This meant I went with the full model to fit to my training data and get the regression loadings.
+
+The trend is −1.72 MW per day, which is about 630 MW lower each year. Compared with Monday, Tuesday to Thursday are not significantly different, while Friday is 1 287 MW lower, Saturday 2 094 MW lower and Sunday 1 974 MW lower. A weekday public holiday lowers the peak by 1 538 MW, an Easter day by 1 470 MW and a year-end day by 1 293 MW. On Christmas Day both the holiday and the year-end indicators apply, so the model lowers the peak by about 2 830 MW. These standard errors come from OLS, which assumes the errors are independent, so the t-values are too large if the errors are autocorrelated. I check this in the diagnostics below.
 
 ```{r reg test socres}
 
@@ -514,16 +595,21 @@ res_reg <- t(sapply(names(fits_reg), function(nm) score_reg(fits_reg[[nm]], newd
 round(res_reg, 3)
 ```
 
+On the test year the full regression has an RMSE of 1 311 MW, an MAE of 1 178 MW and a MAPE of 4.47%. The base and holiday-only models are about the same, with RMSEs of 1 352 MW and 1 330 MW. All three are worse than the naive forecast , 959 MW, and much worse than ETS(A,A,A), 600 MW, and Eskom, 623 MW. The intervals are also poor. Coverage falls from 0.71 to 0.60 as indicators are added, because each stage fits the training data more tightly and gives narrower intervals, while the forecasts themselves stay in the wrong place.
 
 ```{r reg bias}
 p_full <- predict(fit_reg2, newdata = newdata_list$full)
 err <- bench$actual - p_full
-
+mean(err)
 block <- ceiling(seq_len(nrow(bench)) / 92)
 data.frame(block = 1:4, from = tapply(format(bench$date), block, function(x) x[1]), to = tapply(format(bench$date), block, function(x) x[length(x)]), mean_error = round(tapply(err, block, mean), 0))
 
 
 ```
+
+The forecasts are too high on average by 1123 MW across the test year, which is almost the whole MAE of 1178 MW. The mean error is about the same in each quarter of the test year, −1178, −1139, −1207 and −962 MW, so the problem is a shift in level, not a slope that gets worse over time. In the training data the mean residual in each quarter of the data is small, between −131 and 229 MW, so the model fitted the training period well. The bias makes up most of the RMSE. With a mean error of 1123 MW and an RMSE of 1311 MW, the errors around the bias only have a standard deviation of about 680 MW, so most of the RMSE comes from the bias.
+
+
 
 ```{r reg train resid}
 res_tr <- residuals(fit_reg2)
@@ -532,6 +618,10 @@ blk <- ceiling(seq_along(res_tr)/319)
 data.frame(block = 1:4, from = tapply(format(train$date), blk, function(x) x[1]), to = tapply(format(train$date), blk, function(x) x[length(x)]), mean_resid = round(tapply(res_tr, blk, mean), 0))
 
 ```
+
+To see whether the bias was already there in the training data, I split the training residuals into four blocks of 319 days. The mean residual in each block is small, between −131 MW and 229 MW, so on average the model fitted the training period well. The residual plot in the diagnostics below shows the drop starting in the last few weeks of training, but that is too short to move the block average much.
+
+The linear trend explains the bias in the test year. The model lowers demand by about 630 MW a year, which is in line with the falls between the winters of 2022 to 2025 in the EDA. In the test year demand fell much more than that, and a fixed linear trend has no way of following it.
 
 ```{r reg forecast plot}
 bench$reg_full <- as.numeric(predict(fit_reg2, newdata = newdata_list$full))
@@ -549,18 +639,26 @@ ggplot(bench, aes(x = date)) +
 
 ```
 
+The plot shows the regression forecasts against the actual demand in the test year. The forecast has the right shape, with the weekly up and down and the big drop at the year-end, where the two lines meet. But it sits above the actual almost all year, mostly by 1,000 to 2,000 MW, and the gap is smallest in the winter months. The only days where demand is clearly above the forecast are a few days in mid-August.
+
+The forecast sits too high because of how the regression sets the level. The weekday, holiday and Fourier terms only move the forecast up and down around a level, and that level comes from the intercept and the linear trend. Both were estimated on the training data, where demand fell by about 630 MW a year. The trend carries that same rate into the test year, but demand dropped much faster than that between the 2025 and 2026 winters, so every forecast starts from a level that is too high. The model has no way of seeing this, because nothing in it uses the most recent demand. So the regression gets the calendar right and the level wrong.
+
 ```{r reg residuals}
 checkresiduals(fit_reg2, lag = 28)
-
 ```
 
+The residuals on the training data stay above or below zero for weeks at a time instead of jumping around it. By the last few weeks of the training period they are already 1000 to 1600 MW below zero, which is the start of the level shift that the test year shows. The ACF is 0.65 at lag 1 and dies down slowly, with small bumps at multiples of 7. The Breusch-Godfrey test over 28 lags gives LM = 613.6 with p < 2.2e-16, so the errors are strongly autocorrelated. The histogram is close to normal with a few large positive errors.
+
+This means the OLS standard errors in the coefficient table are too small, and that each day's error carries information about the next day's error. The regression with ARMA errors in the next section uses this.
+
 ## Regression with ARMA Errors
+
 ```{r reg PACF}
 ggtsdisplay(residuals(fit_reg2), lag.max = 28)
 
 ```
 
-
+In order to choose a model for the errors I looked at the ACF and PACF of the OLS residuals. The PACF has one large spike of about 0.65 at lag 1 and only small values after it, apart from a spike of about 0.12 at lag 6. The ACF dies down gradually, at about 0.65, 0.45, 0.31 and 0.23 for the first four lags. That is close to the powers of 0.65 (0.65, 0.42, 0.27, 0.18) that an AR(1) would give, decaying just a little more slowly. The ACF also has small bumps at lags 7, 14, 21 and 28 from weekly structure. Together this points to an AR(1) for the errors.
 
 ```{r reg ARMA models}
 
@@ -593,7 +691,10 @@ arma_table <- data.frame(
 )
 
 arma_table[order(arma_table$AICc), ]
+
 ```
+
+I fitted the full regression with five different error models using arima() with the same regressors as the OLS model, and compared them by AICc on the training data. AR(1) has the lowest AICc at 19,432.64. The other four are between 1.2 and 3.2 higher, and all five have a one-step error standard deviation of about 478 MW, so the extra AR and MA terms add nothing so I kept AR(1) as it is the most simple. Compared with the OLS regression the AICc falls from 20,222.2 to 19,432.6, which shows how much the model gains from allowing for the autocorrelation.
 
 ```{r reg arma chosen}
 fit_arma <- fits_arma[["AR(1)"]]
@@ -601,6 +702,10 @@ fit_arma$coef[c("ar1", "intercept")]
 
 ggtsdisplay(residuals(fit_arma), lag.max = 28)
 ```
+
+In the chosen model the AR coefficient is 0.698, so about 70% of each day's error carries over to the next day. At one day ahead the forecast therefore corrects about 70% of yesterday's miss. After seven days only 0.698⁷, or about 8%, of that correction is left.
+
+The residuals of the AR(1) model no longer stay above or below zero for weeks at a time, and the value at lag 1 is close to zero. Most of the ACF and PACF values are now inside the bands. What is left are spikes of about 0.11 to 0.14 at lags 7, 14, 21 and 28. This is weekly structure that the fixed weekday terms do not capture, the same thing that was left in the ETS residuals.
 
 ```{r reg arma test 1 day}
 y_all <- c(d_train$peak, d_test$peak)
@@ -623,28 +728,236 @@ round(res_arma, 3)
 
 ```
 
+To forecast the test year I ran the AR(1) model over the full series with the parameters fixed at the training estimates. The residuals on the training part matched the original fit, so the test forecasts only use the training parameters, and each forecast only uses data up to the day before. One day ahead, the RMSE is 606.36 MW, the MAE 493.03 MW and the MAPE 1.87%. This is a large improvement on the OLS regression, RMSE 1,311 MW. It has a slightly lower RMSE than Eskom, 623 MW, and the same MAE, 494 MW, but it is behind ETS(A,A,A), which has an RMSE of 600 MW and an MAE of 443 MW.
+
+The 95% intervals cover 87.1% of the test days and the CRPS is 349. The intervals are too narrow because they are built from the training error standard deviation of 478 MW, while the test errors are larger.
+
 ```{r reg arma 1 forecast}
-bench$panel <- factor(ceiling(seq_len(nrow(bench)) / 92),
-                      labels = c("Oct-Dec", "Jan-Mar", "Apr-Jun", "Jul-Sep"))
+bench$panel <- ceiling(seq_len(nrow(bench)) / 92)
+bench$panel <- factor(bench$panel, labels = tapply(format(bench$date, "%b %Y"), bench$panel,
+                      function(x) paste(x[1], "to", x[length(x)])))
 
 ggplot(bench, aes(x = date)) +
   geom_line(aes(y = actual, colour = "actual"), linewidth = 0.9) +
   geom_line(aes(y = arma1, colour = "Regression + AR(1) forecast"), linewidth = 0.6) +
   geom_line(aes(y = eskom_1, colour = "Eskom forecast"), linewidth = 0.6) +
+  scale_colour_manual(values = c("actual" = "blue",
+                                 "Regression + AR(1) forecast" = "darkorange",
+                                 "Eskom forecast" = "red")) +
   facet_wrap(~ panel, ncol = 1, scales = "free_x") +
-  scale_colour_manual(values = c("actual" = "grey30",
-                                 "Regression + AR(1) forecast" = "firebrick",
-                                 "Eskom forecast" = "steelblue")) +
-  labs(x = NULL, y = "Daily peak demand (MW)", colour = NULL,
-       title = "Regression with AR(1) errors: 1-day-ahead forecasts, test year") +
-  theme_bw() +
+  labs(title = "One-day-ahead forecasts on the test year: Regression + AR(1) vs Eskom",
+       x = NULL, y = "daily peak (MW)", colour = NULL) +
+  theme_minimal() +
   theme(legend.position = "bottom")
 ```
+The plot shows the one-day forecasts of the regression with AR(1) errors against the actual demand and Eskom's forecast. The constant gap of the OLS forecast is gone, and the forecast now follows the actual demand closely through the whole year, with the weekly pattern and the year-end drop in the right place. For most of the year it is hard to tell apart from Eskom's forecast.
+
+The AR(1) term is what closes the gap. Each day the forecast is moved by about 70% of the previous day's error, so when demand runs below the regression level, the next forecast is pulled down towards it. It does not close the whole gap, because 30% of the error is not carried over. With a level error of about 1120 MW in the OLS model, that leaves the forecast around 340 MW too high on average, which is why it still sits slightly above the actual demand on many weekdays, especially in June and September.
+
+The model still misses after sudden changes. In the Easter dip in early April and the drop around Freedom Day in late April, the forecast does not go as low as the actual demand and then stays low for a day after demand has recovered. In mid-August, when the peak jumped to about 30700 MW, the forecast only reached about 30200 MW and was a day late. The AR(1) term only learns from yesterday's error, so it can follow a change in level but cannot see a one-off day coming.
+```{r reg arma test 7 day}
+
+horizon <- 7
+phi     <- as.numeric(coef(fit_arma)["ar1"])
+
+fc7 <- numeric(length(idx))
+for (i in seq_along(idx)) {
+  o  <- idx[i] - horizon                      # forecast origin
+  fo <- arima(y_all[1:o], order = c(1, 0, 0), xreg = xreg_all[1:o, ],
+              include.mean = TRUE, fixed = coef(fit_arma),
+              transform.pars = FALSE, method = "ML")
+  pr <- predict(fo, n.ahead = horizon,
+                newxreg = xreg_all[(o + 1):(o + horizon), , drop = FALSE])
+  fc7[i] <- pr$pred[horizon]
+}
+bench$arma7 <- fc7
+
+# AR(1) forecast-error sd at horizon h: sigma * sqrt(1 + phi^2 + ... + phi^(2(h-1)))
+sd7 <- sg * sqrt(sum(phi^(2 * (0:(horizon - 1)))))
+bench$arma7_lo <- bench$arma7 - 1.96 * sd7
+bench$arma7_hi <- bench$arma7 + 1.96 * sd7
+
+res_arma7 <- c(point_metrics(actual, bench$arma7),
+               Cover95 = coverage(actual, bench$arma7_lo, bench$arma7_hi),
+               CRPS    = crps_norm(actual, bench$arma7, sd7))
+round(res_arma7, 3)
+
+```
+
+At seven days ahead the regression with AR(1) errors has an RMSE of 1236.37 MW, an MAE of 1093.65 MW and a MAPE of 4.16%. This is only a little better than the OLS regression, 1311 MW, and worse than both ETS(A,A,A), 1,056 MW, and the seasonal naive forecast, 1,059 MW. With only about 8% of the latest error left after seven steps, the forecast falls back almost all the way to the OLS level, which is too high. The 95% intervals, about 1300 MW either side of the forecast, cover only 66.6% of the test days because the forecasts themselves are in the wrong place.
+
+The AR(1) errors fix the level problem at one day ahead, where the model now matches Eskom, but not at seven days ahead, where the forecast drifts back to the OLS level. At the longer horizon the regression still has the calendar right and the level wrong.
 ## Compare Models
+
+To compare the models I put all the test-year scores into one table for each horizon. The interval scores use each model's own 95% interval, with the standard deviation taken from the width of the interval. The plain regression only uses calendar regressors that are known in advance, so its forecast and its scores are the same at both horizons. Eskom and the naive forecast only appear in the one-day table, because Eskom only gives a one-day forecast and the seven-day naive forecast is the same as the seasonal naive one.
+
+```{r model comparison}
+score_row <- function(actual, fc, lo = NULL, hi = NULL) {
+  out <- point_metrics(actual, fc)
+  if (is.null(lo)) return(c(out, Cover95 = NA, CRPS = NA))
+  sgm <- (hi - lo) / (2 * 1.96)
+  c(out, Cover95 = coverage(actual, lo, hi), CRPS = crps_norm(actual, fc, sgm))
+}
+
+# plain regression: forecast and prediction interval from the OLS fit
+pr_ols <- predict(fit_reg2, newdata = d_test, interval = "prediction")
+bench$reg_full <- pr_ols[, "fit"]
+bench$reg_lo   <- pr_ols[, "lwr"]
+bench$reg_hi   <- pr_ols[, "upr"]
+
+res1 <- rbind(
+  "Naive"              = score_row(actual, bench$naive_1),
+  "Seasonal naive"     = score_row(actual, bench$snaive_1),
+  "Eskom"              = score_row(actual, bench$eskom_1),
+  "ETS(A,A,A)"         = score_row(actual, bench$ets_aaa, bench$lo, bench$hi),
+  "Regression"         = score_row(actual, bench$reg_full, bench$reg_lo, bench$reg_hi),
+  "Regression + AR(1)" = score_row(actual, bench$arma1, bench$arma1_lo, bench$arma1_hi))
+
+res7 <- rbind(
+  "Seasonal naive"     = score_row(actual, bench$naive_7),
+  "ETS(A,A,A)"         = score_row(actual, bench$ets7, bench$ets7_lo, bench$ets7_hi),
+  "Regression"         = score_row(actual, bench$reg_full, bench$reg_lo, bench$reg_hi),
+  "Regression + AR(1)" = score_row(actual, bench$arma7, bench$arma7_lo, bench$arma7_hi))
+
+round(res1, 3)
+round(res7, 3)
+```
+
+One day ahead, ETS(A,A,A) has the lowest error on every measure, with an RMSE of 600 MW, an MAE of 443 MW and a MAPE of 1.68%. The regression with AR(1) errors is next with an RMSE of 606 MW, and it is level with Eskom on MAE, 493 against 494 MW. Both models have a lower RMSE than Eskom, by 23 MW and 16 MW. These differences are small, between 2% and 4% of Eskom's RMSE, and I have not tested whether they are statistically significant. The gap to the benchmarks is much larger. ETS, the regression with AR(1) errors and Eskom all have an RMSE 35% to 37% lower than the naive forecast, 959 MW , while the plain regression is the worst model at 1311 MW.
+
+ETS also has the better intervals at one day. Its 95% intervals cover 92.6% of the test days against 87.1% for the regression with AR(1) errors, and its CRPS is lower (327 against 349). Both sets of intervals are a little too narrow. The plain regression's intervals cover only 60% of the days, because its forecasts are in the wrong place.
+
+Seven days ahead the picture changes. ETS(A,A,A) and the seasonal naive forecast are almost the same, with RMSEs of 1056 MW and 1059 MW. The regression with AR(1) errors falls back to 1236 MW, close to the plain regression at 1311 MW. At this horizon no model beats the seasonal naive forecast by a meaningful amount. For the intervals, ETS covers 98.4% of the days, so its intervals are too wide, while the regression with AR(1) errors covers only 66.6%, so its intervals are too narrow and centred too high. ETS still has the lower CRPS, 602 against 800.
+
+
+```{r model comaprison graph}
+comp <- rbind(
+  data.frame(Horizon = "1 day",  Model = rownames(res1), RMSE = res1[, "RMSE"], row.names = NULL),
+  data.frame(Horizon = "7 days", Model = rownames(res7), RMSE = res7[, "RMSE"], row.names = NULL))
+comp$Model <- factor(comp$Model, levels = c("Naive", "Seasonal naive", "Eskom",
+                     "ETS(A,A,A)", "Regression", "Regression + AR(1)"))
+
+ggplot(comp, aes(x = Model, y = RMSE)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = round(RMSE)), vjust = -0.4, size = 3) +
+  facet_wrap(~ Horizon) +
+  labs(x = NULL, y = "RMSE (MW)", title = "Test-year RMSE by model and horizon") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+
+The bar chart shows the same RMSEs side by side. At one day, ETS, the regression with AR(1) errors and Eskom sit together at around 600 MW, well below the naive benchmarks and the plain regression. At seven days every model is between 1056 MW and 1311 MW, and the gap between the best model and the seasonal naive forecast has gone. Naive and Eskom have no bars in the seven-day panel because they are not part of that comparison.
 
 ## Forecast and Report
 
+This section shows the test-year forecasts of the two main models, ETS(A,A,A) and the regression with AR(1) errors, with their 95% prediction intervals at one day and seven days ahead. The scores in the previous section say how well each model did overall. These plots show where in the year the forecasts and intervals work and where they fail.
+
+```{r forecast interval plots}
+#| label: forecast-interval-plots
+dir.create(here::here("projects", "project-03-eskom-demand", "figures"), showWarnings = FALSE)
+
+bench$panel <- factor(ceiling(seq_len(nrow(bench)) / 92),
+                      labels = c("Oct-Dec", "Jan-Mar", "Apr-Jun", "Jul-Sep"))
+
+plot_fc <- function(fc, lo, hi, title, file) {
+  df <- data.frame(date = bench$date, panel = bench$panel,
+                   actual = actual, fc = fc, lo = lo, hi = hi)
+  p <- ggplot(df, aes(x = date)) +
+    geom_ribbon(aes(ymin = lo, ymax = hi), fill = "steelblue", alpha = 0.25) +
+    geom_line(aes(y = actual, colour = "actual"), linewidth = 0.8) +
+    geom_line(aes(y = fc, colour = "forecast"), linewidth = 0.6) +
+    scale_colour_manual(values = c("actual" = "grey30", "forecast" = "firebrick")) +
+    facet_wrap(~ panel, ncol = 1, scales = "free_x") +
+    labs(x = NULL, y = "Daily peak demand (MW)", colour = NULL,
+         title = title, subtitle = "Shaded band: 95% prediction interval") +
+    theme_bw() +
+    theme(legend.position = "bottom")
+  ggsave(here::here("projects", "project-03-eskom-demand", "figures", file),
+         p, width = 8, height = 10, bg = "white")
+  p
+}
+
+plot_fc(bench$ets_aaa, bench$lo, bench$hi, "ETS(A,A,A): 1-day-ahead forecasts", "fc_ets_h1.png")
+plot_fc(bench$ets7, bench$ets7_lo, bench$ets7_hi, "ETS(A,A,A): 7-day-ahead forecasts", "fc_ets_h7.png")
+plot_fc(bench$arma1, bench$arma1_lo, bench$arma1_hi, "Regression + AR(1): 1-day-ahead forecasts", "fc_arma_h1.png")
+plot_fc(bench$arma7, bench$arma7_lo, bench$arma7_hi, "Regression + AR(1): 7-day-ahead forecasts", "fc_arma_h7.png")
+```
+
+```{r froecast plot setup}
+
+dir.create(here::here("projects", "project-03-eskom-demand", "figures"), showWarnings = FALSE)
+
+bench$panel <- ceiling(seq_len(nrow(bench)) / 92)
+bench$panel <- factor(bench$panel, labels = tapply(format(bench$date, "%b %Y"), bench$panel,
+                      function(x) paste(x[1], "to", x[length(x)])))
+
+plot_fc <- function(fc, lo, hi, title, file) {
+  df <- data.frame(date = bench$date, panel = bench$panel,
+                   actual = actual, fc = fc, lo = lo, hi = hi)
+  p <- ggplot(df, aes(x = date)) +
+    geom_ribbon(aes(ymin = lo, ymax = hi), fill = "steelblue", alpha = 0.25) +
+    geom_line(aes(y = actual, colour = "actual"), linewidth = 0.8) +
+    geom_line(aes(y = fc, colour = "forecast"), linewidth = 0.6) +
+    scale_colour_manual(values = c("actual" = "grey30", "forecast" = "firebrick")) +
+    facet_wrap(~ panel, ncol = 1, scales = "free_x") +
+    labs(x = NULL, y = "daily peak (MW)", colour = NULL,
+         title = title, subtitle = "Shaded band: 95% prediction interval") +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+  ggsave(here::here("projects", "project-03-eskom-demand", "figures", file),
+         p, width = 8, height = 10, bg = "white")
+  p
+}
+```
+
+```{r fc ets h1}
+#| label: fc-ets-h1
+print(plot_fc(bench$ets_aaa, bench$lo, bench$hi,
+              "ETS(A,A,A): 1-day-ahead forecasts", "fc_ets_h1.png"))
+```
+
+One day ahead the ETS forecast sits on top of the actual demand for most of the year, inside a band of about 1130 MW either side. The forecast reacts a day late at sharp turns. At the start of January it drops below 21000 MW, under the actual demand, just as demand starts to recover from the year-end break.
+
+```{r fc ets h7}
+#| label: fc-ets-h7
+print(plot_fc(bench$ets7, bench$ets7_lo, bench$ets7_hi,
+              "ETS(A,A,A): 7-day-ahead forecasts", "fc_ets_h7.png"))
+```
+
+
+Seven days ahead the ETS forecast has no steady offset, but its band is very wide, close to 3000 MW either side of the forecast. That is why 98.4% of the actual values fall inside it. Because the forecast leans so heavily on the most recent week, it repeats unusual days a week later. It stays near 24000 MW in late December while the actual demand falls to about 21500 MW, and then it is too low in the first half of January, when it carries the year-end low forward. In the same way, the Easter dip, the dip around Freedom Day in late April and the spike in mid-August all show up in the forecast one week after they happen.
+
+```{r fc arma h1 }
+#| label: fc-arma-h1
+print(plot_fc(bench$arma1, bench$arma1_lo, bench$arma1_hi,
+              "Regression + AR(1): 1-day-ahead forecasts", "fc_arma_h1.png"))
+```
+One day ahead the regression with AR(1) errors also follows the actual demand closely, with a narrower band of about 940 MW either side. The forecast is slightly above the actual demand on many days in the second half of the test year, and it does not go deep enough in the Easter dip in early April, where it bottoms at about 23,500 MW against an actual of about 22800 MW. The year-end drop is in the right place because the year-end indicator is part of the regression.
+```{r fc arma h7}
+#| label: fc-arma-h7
+print(plot_fc(bench$arma7, bench$arma7_lo, bench$arma7_hi,
+              "Regression + AR(1): 7-day-ahead forecasts", "fc_arma_h7.png"))
+```
+
+
+Seven days ahead the regression forecast sits above the actual demand almost everywhere, mostly by 1000 to 2000 MW, because the AR(1) correction has mostly died out. The band is about 1300 MW either side but moves up with the forecast, so the actual demand often falls below the lower edge, which gives the coverage of 66.6%. The gap is smallest in June and largest at the start of January and around Easter, where the forecast is about 2500 MW too high. The forecast still has the right weekly shape and gets the year-end drop right, so this plot shows the opposite problem to ETS. The regression knows the calendar but has the wrong level, while ETS follows the level but does not know the calendar.
+
 ## Discussion
+
+Both approaches handle the weekly cycle in a similar way, with a fixed weekly pattern, and both leave the same weekly structure behind in their residuals. The real difference is in how they handle the yearly cycle and the level of demand. The regression models the yearly cycle directly, with nine Fourier pairs and indicators for holidays, Easter and the year-end, and it gets the shape of the year right, including the year-end drop. But its level comes from a linear trend fixed on the training data, and when demand fell much faster in the test year the regression kept forecasting about 1120 MW too high.
+
+ETS(A,A,A) has no yearly term at all. With alpha at 0.91 its level follows the data almost day by day, so the yearly cycle and the fall in demand are both carried in the level. This means it does not know a holiday is coming and only reacts the day after, but it never drifts away from the actual level of demand. In the test set, following the level mattered more than knowing the calendar.
+
+One day ahead, both of the final models matched Eskom's own forecast. ETS(A,A,A) has an RMSE of 600 MW and an MAE of 443 MW against Eskom's 623 MW and 494 MW, and the regression with AR(1) errors has an RMSE of 606 MW and the same MAE as Eskom. The plain regression only got there once the AR(1) errors were added, which corrected about 70% of the previous day's miss. The differences from Eskom are small and I did not test whether they are statistically significant, so the fair conclusion is that both models are as good as Eskom's forecast at one day ahead, with ETS slightly ahead. I do not know how Eskom's forecast is produced, so I cannot say why it does not do better.
+
+At one day ahead the intervals of both models are slightly too narrow, with coverage of 92.6% for ETS and 87.1% for the regression with AR(1) errors. Two things cause this. The test errors are larger than the training errors the intervals are built from, and the residuals have heavier tails than a normal distribution, so the extreme days around holidays fall outside.
+
+At seven days ahead neither model is much use. ETS(A,A,A) has almost the same RMSE as the seasonal naive forecast (1056 against 1059 MW), because with alpha close to 1 its forecast a week ahead is close to last week's value. Its intervals cover 98.4% of the days, so they are too wide. The regression with AR(1) errors loses most of its correction after seven days and falls back towards the OLS level, with an RMSE of 1236 MW and intervals that only cover 66.6% of the days. ETS has the lower CRPS at both horizons.
+
+So the intervals of both models are close to reliable one day ahead and only miss a few extreme days. Seven days ahead neither set can be relied on, because the ETS intervals are too wide to be useful and the regression intervals are in the wrong place.
+
+There are a few limits to these results. I only have one test year, and it contains a much larger fall in demand than the earlier years (1696 MW between the 2025 and 2026 winters, against 450 to 680 MW before). In a more normal year the regression would probably do better, so the gap between the two approaches may be smaller than it looks here. I have no weather data, which means I cannot explain the high days such as 11 and 12 August 2026. My holiday list is built by hand and does not include bridge days or the low days in May 2024. All the intervals assume normal errors, while the residuals have heavier tails. Finally, the parameters of every model were kept fixed for the whole test year. Refitting the regression during the year would let its trend catch up, but it would still lag behind a sudden drop.
 
 ## References
 
