@@ -1,0 +1,22 @@
+---
+title: "Project 4 Summary"
+format: html
+---
+
+**Title:** Forecasting South African Daily Peak Demand with a State Space Model and a Hand-Coded Kalman Filter
+
+**Section and topic:** Section 2: state space models and the Kalman filter
+
+**Type of project:** Implementation
+
+**Question or aim:**
+
+**Data used (and source):**
+
+**Methods used:**
+
+**Key findings:**
+
+**What I would do differently:**
+
+**Link to detailed analysis:** [project-04.qmd](project-04.qmd)

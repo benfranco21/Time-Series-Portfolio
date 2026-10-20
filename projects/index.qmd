@@ -13,3 +13,7 @@ title: "Projects"
 ## Project 3
 
 [Forecasting South African Daily Peak Electricity Demand: Exponential Smoothing vs Time Series Regression](project-03-eskom-demand/project-03.qmd)
+
+## Project 4
+
+[Forecasting South African Daily Peak Demand with a State Space Model and a Hand-Coded Kalman Filter](project-04-state-space/project-04.qmd)

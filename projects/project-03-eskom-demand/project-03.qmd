@@ -959,5 +959,10 @@ So the intervals of both models are close to reliable one day ahead and only mis
 
 There are a few limits to these results. I only have one test year, and it contains a much larger fall in demand than the earlier years (1696 MW between the 2025 and 2026 winters, against 450 to 680 MW before). In a more normal year the regression would probably do better, so the gap between the two approaches may be smaller than it looks here. I have no weather data, which means I cannot explain the high days such as 11 and 12 August 2026. My holiday list is built by hand and does not include bridge days or the low days in May 2024. All the intervals assume normal errors, while the residuals have heavier tails. Finally, the parameters of every model were kept fixed for the whole test year. Refitting the regression during the year would let its trend catch up, but it would still lag behind a sudden drop.
 
+```{r}
+#| label: save-bench
+saveRDS(bench, here::here("projects", "project-03-eskom-demand", "bench_p3.rds"))
+```
+
 ## References
 
