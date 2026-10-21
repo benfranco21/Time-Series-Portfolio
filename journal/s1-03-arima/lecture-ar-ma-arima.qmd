@@ -1,0 +1,29 @@
+---
+title: "Lecture: AR, MA, ACF/PACF Identification, and ARIMA (Slides 80–125)"
+---
+
+## Journal Entry: Lecture — AR, MA, ACF/PACF Identification, and ARIMA (Slides 80–125)
+
+Today's lecture covered slides 80 to 125, moving from the individual building blocks of MA and AR models through to how they combine into ARIMA.
+
+**AR vs MA — what each model is built on.** The core distinction is *what* each model regresses on. An AR(p) model expresses the current value as a function of its own **past values** (lagged $y$), while an MA(q) model expresses the current value as a function of **past forecast errors** (lagged $\varepsilon$), not lagged data directly. This is a distinction I hadn't fully separated in my head before — it's easy to see both as "using past information" without registering that one uses realised observations and the other uses the shocks that couldn't be explained by the model.
+
+**Identifying which model fits — ACF and PACF.** The lecture then covered how to read the ACF and PACF plots to identify which model form is appropriate, summarised in the identification table:
+
+| Process | ACF | PACF |
+|---|---|---|
+| White noise | No significant spikes | No significant spikes |
+| AR(p) | Decays gradually | Cuts off after lag p |
+| MA(q) | Cuts off after lag q | Decays gradually |
+| ARMA(p, q) | Decays gradually | Decays gradually |
+
+The intuition behind the AR case is that the PACF strips out the indirect correlation carried through intervening lags — for an AR(1) process, $y_t$ only depends directly on $y_{t-1}$, so the PACF has a sharp cutoff after lag 1 even though the ACF decays gradually (since $y_t$ is still indirectly related to $y_{t-2}, y_{t-3}, \dots$ through the chain of dependence). MA behaves as the mirror image of this, because an MA(q) process only has direct dependence for q lags, giving a sharp ACF cutoff, while the PACF decays gradually. As I noted, picking an AR model requires the ACF decay + PACF spike pattern to line up, and MA requires the reverse — the two diagnostics have to agree with each other, not just individually look like one shape or another. The lecture was clear that this table is a guide rather than a hard rule, since sample ACFs are noisy and the final model choice also depends on information criteria and residual diagnostics.
+
+**Combining into ARMA and then ARIMA.** Many real series show both patterns simultaneously — persistence from past values *and* short-lived shocks — which is what ARMA is built to capture, combining the AR and MA structures into one model. The lecture noted that an ARMA process doesn't show either "pure" signature on its ACF/PACF (both decay gradually), so identifying an ARMA model needs the two correlograms together with AIC/BIC and diagnostic checks, not just a visual read.
+
+ARIMA then extends ARMA by adding **differencing** to handle non-stationary series. The order $d$ specifies how many times the series is differenced before the ARMA(p,q) structure is fitted, written as $\phi(L)(1-L)^d y_t = c + \theta(L)\varepsilon_t$. The effect of differencing is to remove trend: for a series with a deterministic linear trend, one difference leaves just a constant plus noise, and for a random walk, one difference leaves pure white noise. This matches what I understood from the lecture — differencing is the mechanism that lets ARIMA handle series ARMA alone couldn't, by removing the trend first so the remaining series is stationary enough for the AR/MA machinery to apply.
+
+**What I want to keep in mind:** it's tempting to over-difference in search of stationarity, but the notes flag that this is detectable — an over-differenced series shows inflated variance and a first-lag autocorrelation near -0.5, so if differencing makes the variance go *up* rather than down, that's a sign of having gone one step too far.
+
+**Takeaway:** today connected the ACF/PACF diagnostics directly to model choice for the first time — rather than treating them as abstract plots, they're now a genuine identification tool, and ARIMA makes sense as "ARMA plus a pre-processing step for non-stationarity" rather than a separate model entirely.
+

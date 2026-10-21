@@ -18,7 +18,13 @@ source(here::here("projects", "project-04-state-space", "R", "kalman_functions.R
 
 ## Introduction
 
-<!-- TODO: write after the code is done -->
+Project 3 compared exponential smoothing and time series regression for forecasting South African daily peak demand. This project uses the same daily peak series, with the same training and test split, to fit a state space model with a Kalman filter that I will code by hand. The model has a level that can move from day to day, and weekday, holiday and yearly effects as regression terms.
+
+This project asks three questions.
+
+1. Can a state space model with a random-walk level forecast daily peak demand more accurately than the ETS and regression models from Project 3, at one day and at seven days ahead?
+2. How much does the level move from day to day, and how does the Kalman gain compare with the ETS smoothing parameter?
+3. Are the one-step errors of the model white noise, and are the 95% prediction intervals the right width?
 
 ## Data and Set-up
 
@@ -69,7 +75,7 @@ build_W <- function(level){
 }
 
 m0 <- c(y_all[1], rep(0,p-1))
-c0 <- diag(1e8, p)
+C0 <- diag(1e8, p)
 
 p
 dim(FF_all)
@@ -94,7 +100,7 @@ n_train <- n - h_test
 y_train <- y_all[1:n_train]
 FF_train <- FF_all[1:n_train,]
 
-kf0 <- kalman_filter(y_train, FF_train, GG, build_W(1e4), V = 1e5, m0, c0, skip = 30)
+kf0 <- kalman_filter(y_train, FF_train, GG, build_W(1e4), V = 1e5, m0, C0, skip = 30)
 kf0$loglik
 round(head(kf0$f, 5))
 round(head(kf0$Q,5))

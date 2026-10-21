@@ -6,5 +6,6 @@ This section covers Base R and tidyverse time series fundamentals, plus a worked
 
 ## Contents
 
-- [Base R ts() Fundamentals](section-1.qmd)
-- [Worked Tutorial: Fitting GARCH Models](garch-tutorial.qmd)
+- [Base R ts() Fundamentals](fundamentals.qmd)
+- [Worked Tutorial: Fitting GARCH Models](arch-garch.qmd)
+- [Spectral Analysis and Filtering](spectral.qmd)

@@ -46,6 +46,14 @@ kalman_filter <- function(y, FF, GG, W, V, m0, c0, skip = 0) {
 
 
 kalman_smoother <- function(kf, GG){
-    n <- row(kf$m)
-    s <- 
+    n <- nrow(kf$m)
+    s <- kf$m
+    S <- kf$C
+    for (i in (n-1):1){
+        Bt <- kf$C[,,i] %*% t(GG) %*% solve(kf$R[,,i+1])
+        s[i,] <- kf$m[i,] + Bt %*% (s[i + 1,] - kf$a[i+1,])
+        S[,,i] <- kf$C[,,i] - Bt %*% (kf$R[,,i+1] - S[,,i+1]) %*% t(Bt)
+
+    }
+    list(s = s, S = S)
 }

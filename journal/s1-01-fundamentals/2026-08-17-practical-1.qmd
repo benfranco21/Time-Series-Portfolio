@@ -1,0 +1,21 @@
+---
+title: "Practical 1: Fitting Time Series Objects to S&P 500 Data"
+date: 2026-08-17
+---
+
+## Journal Entry: Practical 1 — Fitting Time Series Objects to S&P 500 Data
+
+For this practical I replicated the Base R `ts()` workflow from the class slides and then applied it to a real dataset: daily closing prices from the S&P 500 dataset, filtered down to AAPL for 2019 (~252 trading days).
+
+**Base R fundamentals.** I worked through `window()` for subsetting a series by time period, `diff()` for differencing, and `lag()` for shifting a series. The `lag()` function exposed a subtlety I hadn't appreciated: lagged and original series don't automatically align by their time index when combined naively, so `ts.union()` is needed to properly align them into a common matrix before comparison or plotting — otherwise you can silently end up comparing the wrong pairs of observations. I also compared `plot.ts()` against the generic `plot()` for `ts` objects, and used `decompose()` to split the AAPL series into trend, seasonal, and remainder components, noting its known limitation: it struggles with edge effects at the start and end of the series because of how the moving average it relies on is computed.
+
+**Applying this to real data.** Once I moved from the toy examples to the actual AAPL 2019 data, I built both a Base R `ts` object (with `frequency = 252` to reflect trading days) and a `tsibble` version for use with `feasts`.
+
+This is where I hit a real problem: calling `ACF()` on the tsibble threw an "implicit gaps" error. The cause was that the tsibble was indexed by calendar `date`, so weekends and holidays were being interpreted as missing observations even though the series was never meant to include them. The fix was to re-index the tsibble using an integer-based `trading_day` column (from `row_number()`) instead of the calendar date, while keeping `date` as an ordinary column so it could still be used for plotting. This resolved the gap error and let `ACF()` and related `feasts` functions run correctly.
+
+That fix introduced a second problem: once the index was `trading_day` rather than `date`, the default `autoplot()` output no longer showed meaningful calendar labels on the x-axis. I addressed this by rebuilding the plots manually in `ggplot2` — joining a `trading_day` → `date` lookup table onto the `components()` output from STL, and using `scale_x_date()` and `facet_grid()` to reproduce the multi-panel STL decomposition plot with proper monthly date labels, matching the layout style from the class slides.
+
+I only got as far as covering Section 6 (`tsibble`/`feasts`/`timetk`) conceptually, since the sandbox environment I was working in couldn't reach CRAN to install the tidyverts packages — I'll need to run that section locally to complete it hands-on.
+
+**Takeaway:** the practical reinforced that `ts` and `tsibble` objects handle time indexing very differently, and that this difference isn't cosmetic — it directly affects which functions (like `ACF()`) will even run. STL also came out as the more robust alternative to `decompose()` for series where the edges of the sample matter, which they do here given the dataset only spans a single year.
+

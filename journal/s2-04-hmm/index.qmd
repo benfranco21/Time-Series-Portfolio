@@ -1,0 +1,10 @@
+---
+title: "4. Hidden Markov models"
+listing:
+  type: default
+  contents:
+    - "*.qmd"
+  sort: "date"
+---
+
+Entry to come

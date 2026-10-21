@@ -1,0 +1,10 @@
+---
+title: "5. Spectral analysis and filtering"
+listing:
+  type: default
+  contents:
+    - "*.qmd"
+  sort: "date"
+---
+
+Entry to come

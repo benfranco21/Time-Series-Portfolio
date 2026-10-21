@@ -1,0 +1,10 @@
+---
+title: "1. Exponential smoothing"
+listing:
+  type: default
+  contents:
+    - "*.qmd"
+  sort: "date"
+---
+
+Entry to come

@@ -1,0 +1,10 @@
+---
+title: "Section 2"
+---
+
+This section covers the Section 2 tutorials.
+
+## Contents
+
+- [Hidden Markov Models](hmm.qmd)
+- [State Space Models Tutorial](state-space.qmd)

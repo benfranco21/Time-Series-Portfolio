@@ -6,14 +6,22 @@ title: "Projects"
 
 [Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL](project-01-financial-forecasting/project-01.qmd)
 
+[Summary](project-01-financial-forecasting/summary.qmd)
+
 ## Project 2
 
 [GARCH Volatility Modelling: Extending the AAPL Forecasting Analysis](project-02-garch-volatility/project-02.qmd)
+
+[Summary](project-02-garch-volatility/summary.qmd)
 
 ## Project 3
 
 [Forecasting South African Daily Peak Electricity Demand: Exponential Smoothing vs Time Series Regression](project-03-eskom-demand/project-03.qmd)
 
+[Summary](project-03-eskom-demand/summary.qmd)
+
 ## Project 4
 
 [Forecasting South African Daily Peak Demand with a State Space Model and a Hand-Coded Kalman Filter](project-04-state-space/project-04.qmd)
+
+[Summary](project-04-state-space/summary.qmd)

@@ -1,0 +1,10 @@
+---
+title: "4. ARCH and GARCH"
+listing:
+  type: default
+  contents:
+    - "*.qmd"
+  sort: "date"
+---
+
+Entry to come

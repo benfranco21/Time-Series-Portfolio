@@ -2,8 +2,17 @@
 title: "Journal"
 ---
 
-This section contains journal entries written throughout the course.
+## Section 1
 
-## Entries
+- [1. Time series fundamentals](s1-01-fundamentals/index.qmd)
+- [2. Cross-validation and forecast evaluation](s1-02-cross-validation/index.qmd)
+- [3. AR, MA, ARMA and ARIMA](s1-03-arima/index.qmd)
+- [4. ARCH and GARCH](s1-04-arch-garch/index.qmd)
+- [5. Spectral analysis and filtering](s1-05-spectral/index.qmd)
 
-- [journal_entries.md](entries/journal_entries.md)
+## Section 2
+
+- [1. Exponential smoothing](s2-01-exponential-smoothing/index.qmd)
+- [2. Time series regression](s2-02-ts-regression/index.qmd)
+- [3. State space models](s2-03-state-space/index.qmd)
+- [4. Hidden Markov models](s2-04-hmm/index.qmd)

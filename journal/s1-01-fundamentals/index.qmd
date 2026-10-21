@@ -1,0 +1,8 @@
+---
+title: "1. Time series fundamentals"
+listing:
+  type: default
+  contents:
+    - "*.qmd"
+  sort: "date"
+---

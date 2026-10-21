@@ -1,0 +1,10 @@
+---
+title: "2. Time series regression"
+listing:
+  type: default
+  contents:
+    - "*.qmd"
+  sort: "date"
+---
+
+Entry to come

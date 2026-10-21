@@ -1,0 +1,9 @@
+---
+title: "Journal"
+---
+
+This section contains journal entries written throughout the course.
+
+## Entries
+
+- [journal_entries.md](entries/journal_entries.md)

@@ -1,5 +1,8 @@
 project:
   type: website
+  render:
+    - "*.qmd"
+    - "!_archive/"
 
 website:
   title: "Time Series Portfolio"
@@ -7,18 +10,38 @@ website:
     left:
       - text: "Home"
         href: index.qmd
+      - text: "Projects"
+        menu:
+          - text: "Project 1"
+            href: projects/project-01-financial-forecasting/project-01.qmd
+          - text: "Project 2"
+            href: projects/project-02-garch-volatility/project-02.qmd
+          - text: "Project 3"
+            href: projects/project-03-eskom-demand/project-03.qmd
+          - text: "Project 4"
+            href: projects/project-04-state-space/project-04.qmd
       - text: "Journal"
         href: journal/index.qmd
-      - text: "Projects"
-        href: projects/index.qmd
       - text: "Section 1"
-        href: section-1/index.qmd
+        menu:
+          - text: "Overview"
+            href: section-1/index.qmd
+          - text: "Fundamentals"
+            href: section-1/fundamentals.qmd
+          - text: "ARCH/GARCH"
+            href: section-1/arch-garch.qmd
+          - text: "Spectral"
+            href: section-1/spectral.qmd
       - text: "Section 2"
-        href: section-2/section-2.qmd
+        menu:
+          - text: "Overview"
+            href: section-2/index.qmd
+          - text: "HMM"
+            href: section-2/hmm.qmd
+          - text: "State space"
+            href: section-2/state-space.qmd
       - text: "Reflective Commentary"
         href: reflective-commentary.qmd
-      - text: "AI Use Log"
-        href: ai-use-log.qmd
 
 format:
   html:

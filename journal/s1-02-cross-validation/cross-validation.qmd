@@ -1,0 +1,26 @@
+---
+title: "Understanding Time Series Cross-Validation"
+---
+
+## Journal Entry: Understanding Time Series Cross-Validation
+
+While working through the course notes on model validation, I got stuck on the three cross-validation strategies (walk-forward, expanding window, sliding window). My confusion was conceptual: I couldn't see how you could "validate" on a data point if that point had to be forecasted first — it felt circular, like the model was being checked against its own prediction.
+
+Working through this with Claude cleared it up. The key realisation is that the validation point is never a forecasted value fed back into the model. It is always a **real, already-observed** data point that is temporarily withheld from training. The model is fit only on the data before that point, produces a forecast for it, and that forecast is then compared against the actual observed value to get an error.
+
+We worked through a concrete example to make this stick: 100 data points, an initial training size of 70, leaving 30 possible origins. For each strategy, the origin moves forward one step at a time, but the strategies differ in how the training window behaves as it does:
+
+- **Walk-forward**: the model re-estimates at each new origin using all data up to that point, then forecasts one step ahead.
+- **Expanding window**: similar to walk-forward, but the training set grows to include all history up to the current origin (window start is fixed, end grows).
+- **Sliding window**: the training set is a fixed-size window that slides forward, dropping older observations as new ones are added.
+
+The other thing I clarified was how this fits into model *comparison*. It's easy to conflate "30 origins" with "30 different models," but they're separate loops:
+
+1. For a single candidate model, fit it once at each of the 30 origins, producing 30 errors, which are averaged into one CV score for that model.
+2. Repeat this entire process for each other candidate model under consideration.
+3. Compare the averaged scores across models and select the one with the lowest error.
+
+So the validation strategy itself is chosen once, up front, based on the nature of the data (e.g. whether it has structural breaks), and then applied consistently across all candidate models — it isn't something you also search over.
+
+**Takeaway:** cross-validation in a time series context is really just an adaptation of the "train on the past, test on the future" rule, repeated across many origins to get a stable estimate of a model's out-of-sample accuracy, rather than a single potentially lucky/unlucky train-test split.
+

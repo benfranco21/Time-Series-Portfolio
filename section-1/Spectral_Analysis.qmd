@@ -1,0 +1,611 @@
+---
+title: "Spectral Analysis"
+format: html
+editor: visual
+---
+
+## Spectral Analysis
+
+```{r}
+#| message: false
+#| warning: false
+library(tidyverse)
+library(patchwork)
+
+theme_set(theme_minimal(base_size = 11))
+
+col_obs  <- "#2C3E50"   # the observed series
+col_ref  <- "#C0392B"   # truth or reference line
+col_bar  <- "#7F8C8D"   # periodogram ordinates
+
+# Raw periodogram at the Fourier frequencies j/n, j = 1, ..., floor(n/2).
+# Element k + 1 of fft(y) corresponds to frequency k/n.
+pgram <- function(y, demean = TRUE) {
+  n <- length(y)
+  if (demean) y <- y - mean(y)
+  I <- Mod(fft(y))^2 / n
+  j <- 1:floor(n / 2)
+  tibble(freq = j / n, period = n / j, I = I[j + 1])
+}
+
+# Theoretical ARMA spectral density, unit innovation variance by default.
+arma_spec <- function(f, ar = numeric(0), ma = numeric(0), sigma2 = 1) {
+  vapply(f, function(ff) {
+    num <- if (length(ma))
+      Mod(1 + sum(ma * exp(-2i * pi * ff * seq_along(ma))))^2 else 1
+    den <- if (length(ar))
+      Mod(1 - sum(ar * exp(-2i * pi * ff * seq_along(ar))))^2 else 1
+    sigma2 * num / den
+  }, numeric(1))
+}
+
+# Fisher's exact test for the largest periodogram ordinate, white-noise null.
+# Self-contained: uses the closed-form p-value, no external package needed.
+#   g = max ordinate / sum of ordinates
+#   P(G > g) = sum_{k=1}^{floor(1/g)} (-1)^{k-1} choose(q, k) (1 - k g)^{q-1}
+fisher_g_test <- function(y) {
+  y <- y - mean(y)
+  n <- length(y)
+  I <- Mod(fft(y))^2 / n
+  m <- floor((n - 1) / 2)          # ordinates that are exponential under H0
+  I <- I[2:(m + 1)]
+  q <- length(I)
+  g <- max(I) / sum(I)
+  K <- floor(1 / g)
+  k <- 1:K
+  terms <- (-1)^(k - 1) * exp(lchoose(q, k) + (q - 1) * log1p(-k * g))
+  p <- min(max(sum(terms), 0), 1)
+  jmax <- which.max(I)
+  list(g = g, p.value = p, freq = jmax / n, period = n / jmax)
+}
+
+# Turn a spec.pgram() object into a tibble for ggplot
+spec_df <- function(sp, label = NULL) {
+  tibble(freq = sp$freq, spec = sp$spec, label = label)
+}
+```
+
+## Section 2: The question spectral analysis asks
+
+**Question:** A monthly series contains a strong repeating annual pattern. What period would you expect for this cycle, and what frequency represents it?
+
+**Answer:**
+
+The cycle repeats every 12 months, so the period is $m = 12$ months and the frequency is $f = 1/12 \approx 0.0833$ cycles per month. In the periodogram I would look for a peak at 0.0833.
+
+## Section 3: Period, frequency and the ts() collision
+
+```{r}
+frequency(ts(1:24, frequency = 12))
+frequency(ts(1:8, frequency = 4))
+```
+
+**Question:** Complete the table.
+
+| Data      | Cycle  | Period ($m$) | Frequency ($f = 1/m$) |
+|-----------|--------|:------------:|:---------------------:|
+| Monthly   | Annual |      12      |        0.0833         |
+| Quarterly | Annual |      4       |        0.2500         |
+| Hourly    | Daily  |      24      |        0.0417         |
+| Daily     | Weekly |      7       |        0.1429         |
+
+## Section 4: The Nyquist frequency and aliasing
+
+```{r}
+#| fig-cap: "Figure 1: Two waves of periods 1.5 and 3. Sampled at the integers (points), they give the same values."
+t_fine <- seq(0, 6, by = 0.01)
+
+waves <- tibble(t = t_fine,
+                `Period 1.5` = cos(2 * pi * t_fine / 1.5),
+                `Period 3`   = cos(2 * pi * t_fine / 3)) |>
+  pivot_longer(-t, names_to = "wave", values_to = "y")
+
+samples <- tibble(t = 0:6, y = cos(2 * pi * (0:6) / 3))
+
+ggplot(waves, aes(t, y, colour = wave)) +
+  geom_line() +
+  geom_point(data = samples, aes(t, y), colour = "black", size = 2.5,
+             inherit.aes = FALSE) +
+  scale_colour_manual(values = c(col_ref, col_obs)) +
+  labs(x = "Time (observations)", y = "y", colour = NULL)
+```
+
+**Question:** A process oscillates at a true frequency of $f = 0.70$ cycles per observation. Can a series sampled once per observation resolve it, and can any later analysis recover it?
+
+**Answer:**
+
+No to both. The Nyquist frequency is $f_N = 1/2$ cycle per observation — the fastest oscillation that sampling once per observation can represent. Since $0.70 > f_N$, this process cannot be resolved directly.
+
+The oscillation does not vanish; it aliases, folding back into $[0, 1/2]$ via $f_{\text{alias}} = |f - k|$ for the nearest integer $k$:
+
+$$
+f_{\text{alias}} = |0.70 - 1| = 0.30
+$$
+
+So a series sampled once per observation will look identical to a slower process oscillating at $f = 0.30$ (period $\approx 3.33$ observations) — not like anything at $f = 0.70$.
+
+This is also **irreversible**: the sampled values produced by a true $f = 0.70$ process and a true $f = 0.30$ process are numerically identical (cf. Figure 1, periods 1.5 vs. 3). No later analysis, however sophisticated, can recover the true frequency — the distinguishing information was never captured, not merely obscured. The practical implication is that the sampling interval must be chosen *before* data collection, based on the fastest frequency of interest; the problem cannot be fixed after the fact.
+
+## Section 5: A series as a sum of waves
+
+A quick check that the periodogram really is the regression on a sine and cosine pair. At a Fourier frequency $f_j = j/n$, regress the series on $\sin(2\pi f_j t)$ and $\cos(2\pi f_j t)$, and compare $\frac{n}{4}(\hat a^2 + \hat b^2)$ with the periodogram ordinate.
+
+```{r}
+set.seed(5)
+n5 <- 100
+t5 <- 1:n5
+y5 <- 3 * cos(2 * pi * 5 * t5 / n5 + 1) + rnorm(n5)
+
+f5  <- 5 / n5
+fit <- lm(y5 ~ sin(2 * pi * f5 * t5) + cos(2 * pi * f5 * t5))
+ab  <- coef(fit)[2:3]
+
+c(from_regression  = n5 / 4 * sum(ab^2),
+  from_periodogram = pgram(y5)$I[5])
+
+# the ordinates add up to (about) half the sum of squares
+c(sum_I = sum(pgram(y5)$I), half_SS = sum((y5 - mean(y5))^2) / 2)
+```
+
+The two numbers agree exactly (216.63), so the periodogram ordinate at $f_j$ is just the size of the fitted sine and cosine pair at that frequency. The ordinates add up to about half the sum of squares (261.4 vs 260.7, the small gap is the Nyquist ordinate counted only once). So the periodogram splits the variation of the series across frequencies, like an ANOVA table with frequencies as the rows.
+
+## Section 6: The periodogram
+
+**Question:** Monthly data show a large periodogram ordinate at $f = 0.0833$. What do you report to a reader?
+
+**Answer:**
+
+With a frequency of 0.0833, we transform that into a period of $1/0.0833 = 12$ months. This period is what we report to the reader: a 12-month (annual) cycle accounts for a large share of the variation in the series. When discussing time series data we talk about the period, in the units of the data, rather than the frequency.
+
+## Section 7: A first worked example: a known cycle
+
+```{r}
+set.seed(100)
+y_cyc  <- 2 * sin(2 * pi * (1:240) / 24) + rnorm(240, 0, 0.4)
+ts_cyc <- ts(y_cyc, frequency = 24)
+
+plot(ts_cyc, main = "A period-24 cycle buried in noise",
+     ylab = expression(y[t]), xlab = "Time")
+```
+
+**Question 1:** Before computing anything, which frequency should dominate the periodogram?
+
+**Answer:**
+
+The frequency, given the period $m = 24$, we would expect from the above time series would be $f = 1/24 = 0.0417$.
+
+```{r}
+pg_cyc <- pgram(y_cyc)
+pg_cyc |> slice_max(I, n = 5)
+```
+
+```{r}
+#| fig-cap: "Figure 2: Periodogram of the period-24 series. The dashed line marks f = 1/24."
+ggplot(pg_cyc, aes(freq, I)) +
+  geom_vline(xintercept = 1 / 24, linetype = "dashed", colour = col_ref) +
+  geom_segment(aes(xend = freq, yend = 0), colour = col_bar, linewidth = 0.4) +
+  labs(x = "Frequency (cycles per observation)", y = expression(I(f)),
+       title = "Periodogram")
+```
+
+**Question 2:** From the table and plot: what is the dominant frequency, what period does it imply, and does it match how the data were built?
+
+**Answer:**
+
+The dominant frequency is $f = 0.0417$, exactly as predicted. Inverting it:
+
+$$
+m = \frac{1}{f} = \frac{1}{0.0417} = 24
+$$
+
+This confirms a 24 observation cycle, matching exactly how the series was constructed. (With 240 observations in the sample, that also means 10 complete cycles of the oscillation fit within the series.)
+
+### Section 7.1: The same analysis with spec.pgram()
+
+```{r}
+sp_cyc <- spec.pgram(y_cyc, taper = 0, detrend = FALSE, fast = FALSE,
+                     plot = FALSE)
+
+jmax <- which.max(sp_cyc$spec)
+c(peak_frequency = sp_cyc$freq[jmax],
+  peak_period    = 1 / sp_cyc$freq[jmax])
+```
+
+```{r}
+#| fig-cap: "Figure 3: The raw periodogram by hand (left) and from spec.pgram() with its defaults off (right)."
+p_hand <- ggplot(pg_cyc, aes(freq, I)) +
+  geom_vline(xintercept = 1 / 24, linetype = "dashed", colour = col_ref) +
+  geom_segment(aes(xend = freq, yend = 0), colour = col_bar, linewidth = 0.4) +
+  labs(x = "Frequency", y = expression(I(f)), title = "By hand: pgram()")
+
+p_spec <- ggplot(spec_df(sp_cyc), aes(freq, spec)) +
+  geom_vline(xintercept = 1 / 24, linetype = "dashed", colour = col_ref) +
+  geom_segment(aes(xend = freq, yend = 0), colour = col_bar, linewidth = 0.4) +
+  labs(x = "Frequency", y = "spec", title = "spec.pgram()")
+
+p_hand + p_spec
+```
+
+Both give the peak at $f = 1/24$, period 24, and here even the heights match (234.5), because `y_cyc` is a plain vector, so `spec.pgram()` treats it as one observation per time unit. If I pass `ts_cyc` instead (frequency = 24), `spec.pgram()` divides by 24 and puts the frequency axis in cycles per day, so the same peak shows up at frequency 1 (once a day) with height 9.77. Same data, different units and scale. From here on I use `spec.pgram()` for estimation.
+
+## Section 8: Reading a periodogram: five steps
+
+### Step 1: convert the peak to a period
+
+Find the largest ordinate, read off its frequency, invert it and attach the units. In Section 7 the peak at $f = 0.0417$ is a cycle of 24 observations; if the data were hourly, that is a 24-hour (daily) cycle.
+
+### Step 2: check for harmonics
+
+```{r}
+#| fig-cap: "Figure 4: A smooth monthly pattern (left) and a December spike (right), with their periodograms. Dotted lines at k/12."
+set.seed(8)
+mon <- 1:240
+y_wave  <- sin(2 * pi * mon / 12) + rnorm(240, 0, 0.3)
+y_spike <- ifelse(mon %% 12 == 0, 3, 0) + rnorm(240, 0, 0.3)
+
+plot_series <- function(y, title) {
+  ggplot(tibble(t = 1:48, y = y[1:48]), aes(t, y)) +
+    geom_line(colour = col_obs) +
+    labs(x = "Month", y = NULL, title = title)
+}
+
+plot_pgram <- function(y) {
+  ggplot(pgram(y), aes(freq, I)) +
+    geom_vline(xintercept = (1:6) / 12, linetype = "dotted", colour = col_ref) +
+    geom_segment(aes(xend = freq, yend = 0), colour = col_bar, linewidth = 0.4) +
+    labs(x = "Frequency", y = expression(I(f)))
+}
+
+(plot_series(y_wave, "Smooth wave") | plot_series(y_spike, "December spike")) /
+  (plot_pgram(y_wave) | plot_pgram(y_spike))
+```
+
+```{r}
+pgram(y_spike) |> slice_max(I, n = 7)
+```
+
+**Question:** A monthly series has large peaks at $f = 1/12$, $2/12$ and $3/12$. Are these three separate cycles of twelve, six and four months?
+
+**Answer:**
+
+No. It is one 12-month pattern. A pattern that is not a pure sine wave needs harmonics at $k/12$ to build its shape. The December spike above is the extreme case: its periodogram has peaks of about the same height at every harmonic, $1/12, 2/12, \dots, 6/12$ (periods 12, 6, 4, 3, 2.4 and 2 months), even though the data contain only one annual pattern. The smooth wave only needs the $1/12$ peak. So peaks at $k/12$ should be reported as one annual cycle with a non-sinusoidal shape, not as separate 6- and 4-month cycles.
+
+### Step 3: do not trust a single tall ordinate
+
+```{r}
+#| fig-cap: "Figure 5: Raw periodograms of white noise at three sample sizes, against the true flat spectrum (red, at 1)."
+set.seed(3)
+wn <- map_dfr(c(64, 256, 1024), function(n) {
+  pgram(rnorm(n)) |> mutate(n = paste("n =", n))
+})
+wn$n <- factor(wn$n, levels = c("n = 64", "n = 256", "n = 1024"))
+
+ggplot(wn, aes(freq, I)) +
+  geom_line(colour = col_bar, linewidth = 0.3) +
+  geom_hline(yintercept = 1, colour = col_ref) +
+  facet_wrap(~ n, ncol = 1) +
+  labs(x = "Frequency", y = expression(I(f)))
+
+# the spread of the ordinates does not shrink as n grows
+wn |> group_by(n) |> summarise(mean_I = mean(I), sd_I = sd(I), max_I = max(I))
+```
+
+**Question:** A raw periodogram has one very tall peak. Does that prove a real cycle?
+
+**Answer:**
+
+No. In the white-noise plots the true spectrum is flat at 1, but single ordinates reach 2.7 ($n = 64$), 4.9 ($n = 256$) and 5.7 ($n = 1024$). The standard deviation of the ordinates stays close to their mean (about 1) at every sample size, so a bigger sample does not make each ordinate more precise, it just gives more of them, and so more chances for a tall one by chance. A tall peak needs to survive smoothing (Step 4) and a formal test (Step 5) before I call it a cycle.
+
+### Step 4: smooth, and keep what survives
+
+```{r}
+#| fig-cap: "Figure 6: One AR(2) series with no smoothing and three increasing spans, against the true spectral density (red), log scale."
+set.seed(4)
+ar2 <- c(1.5588, -0.81)               # complex roots, peak near period 12
+y_ar2 <- arima.sim(list(ar = ar2), n = 480)
+
+spans_list <- list("Raw" = NULL, "spans = 5" = 5,
+                   "spans = c(9, 7)" = c(9, 7), "spans = c(25, 25)" = c(25, 25))
+
+sm <- imap_dfr(spans_list, function(s, nm) {
+  spec_df(spec.pgram(y_ar2, spans = s, plot = FALSE), nm)
+})
+sm$label <- factor(sm$label, levels = names(spans_list))
+
+truth <- tibble(freq = seq(0.002, 0.5, length.out = 400)) |>
+  mutate(spec = arma_spec(freq, ar = ar2))
+
+ggplot(sm, aes(freq, spec)) +
+  geom_line(colour = col_obs, linewidth = 0.4) +
+  geom_line(data = truth, colour = col_ref) +
+  scale_y_log10() +
+  facet_wrap(~ label) +
+  labs(x = "Frequency", y = "Spectrum (log scale)")
+```
+
+**Question:** What goes wrong if the smoothing span is (1) too small, or (2) too large?
+
+**Answer:**
+
+(1) Too small: the estimate is still nearly as noisy as the raw periodogram (the `spans = 5` panel still wiggles around the red line), so random bumps can look like features. (2) Too large: the averaging spreads the peak out. With `spans = c(25, 25)` the peak is lower and wider than the true density, so the height and sharpness of the cycle are understated and nearby features would merge. `spans = c(9, 7)` follows the red line best here. In practice I try a few spans and keep the smallest one whose features stay when the span is increased a little.
+
+### Step 5: test the largest peak
+
+```{r}
+set.seed(5)
+fisher_g_test(rnorm(240))    # white noise
+```
+
+```{r}
+fisher_g_test(y_cyc)         # the period-24 series from Section 7
+```
+
+**Question:** What hypothesis does Fisher's test assess, and what does rejection mean?
+
+**Answer:**
+
+The null hypothesis is that the series is Gaussian white noise, so its spectrum is flat and no single frequency stands out. $g$ is the share of the total that sits in the largest ordinate. For white noise $g = 0.043$ and $p = 0.53$, so I do not reject: the largest ordinate (at period 2.09) is what you would expect from noise. For the period-24 series $g = 0.937$, meaning 94% of the variation is at one frequency, and $p \approx 10^{-140}$, so I reject. Rejection means the largest peak is too big to be white noise; it does not by itself prove a deterministic cycle, and if the series is autocorrelated (not white) the test should be done on prewhitened residuals, with an approximate p-value.
+
+## Section 9: Preparing a series
+
+```{r}
+#| fig-cap: "Figure 7: A trending series with a 12-month cycle, without (left) and with (right) detrending. Dashed line at f = 1/12."
+set.seed(9)
+t9   <- 1:240
+y_tr <- 0.05 * t9 + sin(2 * pi * t9 / 12) + rnorm(240, 0, 0.5)
+
+sp_raw <- spec.pgram(y_tr, detrend = FALSE, taper = 0, plot = FALSE)
+sp_det <- spec.pgram(y_tr, detrend = TRUE,  taper = 0, plot = FALSE)
+
+det <- bind_rows(spec_df(sp_raw, "Mean removed only"),
+                 spec_df(sp_det, "Linear trend removed"))
+det$label <- factor(det$label, levels = c("Mean removed only", "Linear trend removed"))
+
+ggplot(det, aes(freq, spec)) +
+  geom_line(colour = col_obs, linewidth = 0.4) +
+  geom_vline(xintercept = 1 / 12, linetype = "dashed", colour = col_ref) +
+  scale_y_log10() +
+  facet_wrap(~ label) +
+  labs(x = "Frequency", y = "Spectrum (log scale)")
+```
+
+With only the mean removed, the trend puts huge power at the lowest frequencies and the spectrum slopes down from the left edge, partly drowning the 12-month peak. After removing the linear trend, the low-frequency power goes and the peak at $f = 1/12$ is clearly the main feature. Detrending (fitting and subtracting the trend) is the gentle fix; differencing would also remove it but changes the whole spectrum (Section 11). Tapering and padding are the other two defaults: tapering reduces leakage of a big peak into its neighbours, and padding only makes the frequency grid finer without adding information.
+
+## Section 10: Spectral signatures of familiar models
+
+```{r}
+#| fig-cap: "Figure 8: Theoretical spectral densities (unit innovation variance)."
+f_grid <- seq(0.001, 0.5, length.out = 500)
+
+theory <- bind_rows(
+  tibble(freq = f_grid, spec = arma_spec(f_grid),               model = "White noise"),
+  tibble(freq = f_grid, spec = arma_spec(f_grid, ar = 0.8),     model = "AR(1), phi = 0.8"),
+  tibble(freq = f_grid, spec = arma_spec(f_grid, ar = -0.8),    model = "AR(1), phi = -0.8"),
+  tibble(freq = f_grid, spec = arma_spec(f_grid, ar = ar2),     model = "AR(2), complex roots")
+)
+theory$model <- factor(theory$model, levels = unique(theory$model))
+
+ggplot(theory, aes(freq, spec)) +
+  geom_line(colour = col_obs) +
+  facet_wrap(~ model, scales = "free_y") +
+  labs(x = "Frequency", y = "f(frequency)")
+```
+
+**Question:** Match each description to a process: (A) flat across frequency; (B) power concentrated near $f = 0$; (C) power concentrated near $f = 1/2$; (D) a broad interior peak.
+
+**Answer:**
+
+(A) Flat: white noise. (B) Power near $f = 0$: AR(1) with $\phi = 0.8$ (red noise, slow smooth movement). (C) Power near $f = 1/2$: AR(1) with $\phi = -0.8$ (blue noise, the series flips sign from one observation to the next). (D) Broad interior peak: AR(2) with complex roots, a quasi-cycle.
+
+### Section 10.1: A cycle that is not seasonal
+
+```{r}
+peak_f <- f_grid[which.max(arma_spec(f_grid, ar = ar2))]
+c(peak_frequency = peak_f, peak_period = 1 / peak_f)
+```
+
+**Question:** Observed monthly, would a periodogram peak near twelve months prove deterministic annual seasonality?
+
+**Answer:**
+
+No. The AR(2) above has its spectral peak at $f = 0.082$, a period of about 12.2 observations, so on monthly data it would look like an annual cycle. But it is a stochastic cycle: the length varies from one cycle to the next and nothing ties it to the calendar. That shows up as a broad peak (Figure 8), while deterministic seasonality gives a narrow spike exactly at $1/12$ (and its harmonics). So the width of the peak matters: a broad peak near 12 months suggests a cyclical AR-type process, not proof of fixed annual seasonality.
+
+## Section 11: What differencing does to a spectrum
+
+```{r}
+#| fig-cap: "Figure 9: Multipliers applied to the spectrum by a first difference and a lag-12 seasonal difference."
+mult <- bind_rows(
+  tibble(freq = f_grid, gain = 4 * sin(pi * f_grid)^2,      filter = "First difference"),
+  tibble(freq = f_grid, gain = 4 * sin(12 * pi * f_grid)^2, filter = "Seasonal difference (lag 12)")
+)
+
+ggplot(mult, aes(freq, gain)) +
+  geom_line(colour = col_obs) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = col_ref) +
+  facet_wrap(~ filter, ncol = 1) +
+  labs(x = "Frequency", y = "Multiplier")
+```
+
+**Question:** Why is unnecessary differencing harmful rather than merely unhelpful?
+
+**Answer:**
+
+Differencing is a filter that multiplies the spectrum by $4\sin^2(\pi f)$. This is zero at $f = 0$, which is what removes a trend, but it is 4 at $f = 1/2$, so it boosts high-frequency noise. If the series did not need differencing, the result has a spectrum that is pushed down at low frequencies and up at high frequencies, which shows up in the time domain as a non-invertible MA term (an MA coefficient close to -1, as in the Part 1 notes). The seasonal difference is worse: it has zeros at every $k/12$, so it also wipes out genuine seasonal information. So over-differencing adds structure that was not in the data rather than just doing nothing.
+
+## Section 12: The frequency domain versus the ACF
+
+**Question:** A series appears to contain cycles of roughly 7, 30 and 365 observations. Which representation makes these simultaneous periodicities easier to see?
+
+**Answer:**
+
+The frequency domain. Three cycles of 7, 30 and 365 observations give three separate peaks at $f = 1/7$, $1/30$ and $1/365$ in the spectrum, each readable on its own. In the ACF they overlap: the 7-day pattern repeats at lags 7, 14, 21, ..., the 30-day one at 30, 60, ..., and the bumps mix together so it is hard to read off how many cycles there are or how long each one is.
+
+## Section 13: Integrated exercise
+
+```{r}
+set.seed(13)
+y_ex <- 1.5 * sin(2 * pi * (1:360) / 30) + rnorm(360, 0, 0.8)
+
+ggplot(tibble(t = 1:360, y = y_ex), aes(t, y)) +
+  geom_line(colour = col_obs, linewidth = 0.4) +
+  labs(x = "Time", y = expression(y[t]), title = "Series with a 30-observation cycle")
+```
+
+### Task 1: predict, then read the periodogram
+
+Before computing: the cycle has period 30, so I expect the peak at $f = 1/30 = 0.0333$.
+
+```{r}
+pg_ex <- pgram(y_ex)
+pg_ex |> slice_max(I, n = 5)
+```
+
+```{r}
+ggplot(pg_ex, aes(freq, I)) +
+  geom_vline(xintercept = 1 / 30, linetype = "dashed", colour = col_ref) +
+  geom_segment(aes(xend = freq, yend = 0), colour = col_bar, linewidth = 0.4) +
+  labs(x = "Frequency", y = expression(I(f)), title = "Raw periodogram")
+```
+
+**Question:** What period does the largest peak imply?
+
+**Answer:**
+
+The largest ordinate is at $f = 0.0333$, so $m = 1/0.0333 = 30$ observations. That matches how the series was built and is far bigger than the next ordinate (172 vs 3.4).
+
+### Task 2: smooth at two spans
+
+```{r}
+sp_light <- spec.pgram(y_ex, spans = 5,       plot = FALSE)
+sp_heavy <- spec.pgram(y_ex, spans = c(9, 7), plot = FALSE)
+
+two <- bind_rows(spec_df(sp_light, "spans = 5"),
+                 spec_df(sp_heavy, "spans = c(9, 7)"))
+
+ggplot(two, aes(freq, spec, colour = label)) +
+  geom_line(linewidth = 0.5) +
+  geom_vline(xintercept = 1 / 30, linetype = "dashed", colour = col_ref) +
+  scale_y_log10() +
+  scale_colour_manual(values = c(col_bar, col_obs)) +
+  labs(x = "Frequency", y = "Spectrum (log scale)", colour = NULL)
+```
+
+```{r}
+c(light_peak_period = 1 / sp_light$freq[which.max(sp_light$spec)],
+  heavy_peak_period = 1 / sp_heavy$freq[which.max(sp_heavy$spec)])
+```
+
+**Question:** Does the feature near $f = 1/30$ survive the heavier smoothing, and why compare two spans at all?
+
+**Answer:**
+
+Yes. The peak near $f = 1/30$ is the biggest feature at both spans; with `spans = 5` its maximum falls on the neighbouring frequency (period 27.7) and with `spans = c(9, 7)` it is at period 30, because smoothing spreads the peak over its neighbours. Everything else stays at the noise level. Comparing two spans is the check from Step 4: a real feature survives a change in smoothing, while a peak that disappears when the span increases a little was noise.
+
+### Task 3: formal test
+
+```{r}
+fisher_g_test(y_ex)
+```
+
+**Question:** What does the test add to the graphical analysis?
+
+**Answer:**
+
+It gives a formal yes/no with a p-value that accounts for picking the biggest ordinate out of all of them. Here $g = 0.57$ (57% of the variation at one frequency) and $p \approx 8 \times 10^{-64}$, so I reject white noise. The plots show where the peak is; the test shows that a peak that size would not happen by chance from noise.
+
+### Final interpretation
+
+The series contains a cycle of 30 observations. The raw periodogram peaks at $f = 0.0333$, which is a period of 30. The peak stays the dominant feature when the spectrum is smoothed at two different spans, so it is not a single noisy ordinate, and Fisher's test rejects white noise ($g = 0.57$, $p < 10^{-60}$). There are no harmonics, so the cycle is close to a pure sine wave, and the rest of the spectrum is flat, so the remaining variation looks like white noise.
+
+## Section 14: Simulated example: hourly electricity demand
+
+**The situation.** A power utility records demand every hour and wants to know which cycles drive the load, so it can plan when to run extra generation. This links to the Eskom data in Projects 3 and 4, but here I simulate the data so I know the truth. I simulate eight weeks of hourly demand (in GW) with:
+
+- a daily pattern with a morning peak around 08:00 and a bigger evening peak around 19:00,
+- a weekend dip (Saturday and Sunday about 2 GW lower),
+- a slight upward trend,
+- AR(1) noise, so the hours are correlated like real demand.
+
+**What I expect before computing anything.**
+
+- The daily cycle is 24 hours, so a big peak at $f = 1/24 = 0.0417$.
+- The daily shape has two peaks, so it is not a sine wave. It needs harmonics, so I expect smaller peaks at $2/24$, $3/24$, ... These are part of the daily pattern, not new cycles.
+- The weekend dip repeats every 168 hours, so a peak at $f = 1/168 = 0.006$ near the left edge, again with harmonics at $k/168$.
+- The AR(1) noise gives a background that is higher at low frequencies (red noise), not flat.
+- The trend would pile power at the lowest frequencies, so I detrend first (the `spec.pgram()` default).
+
+```{r}
+set.seed(2026)
+n_h  <- 24 * 7 * 8                       # eight weeks of hours
+hr   <- 0:(n_h - 1)
+hour <- hr %% 24
+day  <- hr %/% 24
+weekend <- (day %% 7) %in% c(5, 6)
+
+daily_shape <- 3 * exp(-(hour - 8)^2 / 4) + 4 * exp(-(hour - 19)^2 / 6)
+noise <- as.numeric(arima.sim(list(ar = 0.7), n = n_h, sd = 0.5))
+
+demand <- 25 + daily_shape - 2 * weekend + 0.002 * hr + noise
+
+elec <- tibble(hr = hr, demand = demand)
+```
+
+```{r}
+#| fig-cap: "Figure 10: The first two weeks of simulated hourly demand. Weekends are shaded."
+wk_end <- tibble(start = c(5, 12) * 24, end = c(7, 14) * 24)
+
+ggplot(filter(elec, hr < 24 * 14), aes(hr, demand)) +
+  geom_rect(data = wk_end, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
+            fill = "grey90", inherit.aes = FALSE) +
+  geom_line(colour = col_obs, linewidth = 0.4) +
+  labs(x = "Hour", y = "Demand (GW)")
+```
+
+```{r}
+#| fig-cap: "Figure 11: Smoothed spectrum of hourly demand (log scale). Red dashed lines at the daily frequency and its harmonics, k/24."
+sp_elec <- spec.pgram(demand, spans = c(3, 3), fast = FALSE, plot = FALSE)
+
+ggplot(spec_df(sp_elec), aes(freq, spec)) +
+  geom_vline(xintercept = (1:6) / 24, linetype = "dashed", colour = col_ref,
+             linewidth = 0.3) +
+  geom_line(colour = col_obs, linewidth = 0.4) +
+  scale_y_log10() +
+  labs(x = "Frequency (cycles per hour)", y = "Spectrum (log scale)")
+```
+
+```{r}
+#| fig-cap: "Figure 12: Zoom on the low frequencies (raw periodogram after detrending). Blue dotted lines at the weekly frequency and its harmonics, k/168; red dashed line at 1/24."
+sp_low <- spec.pgram(demand, taper = 0, fast = FALSE, plot = FALSE)
+
+ggplot(filter(spec_df(sp_low), freq <= 0.05), aes(freq, spec)) +
+  geom_vline(xintercept = (1:6) / 168, linetype = "dotted", colour = "steelblue") +
+  geom_vline(xintercept = 1 / 24, linetype = "dashed", colour = col_ref) +
+  geom_segment(aes(xend = freq, yend = 0), colour = col_bar, linewidth = 0.5) +
+  labs(x = "Frequency (cycles per hour)", y = "Periodogram")
+```
+
+```{r}
+# biggest ordinates, as periods in hours
+spec_df(sp_low) |>
+  mutate(period_hours = 1 / freq) |>
+  slice_max(spec, n = 8)
+```
+
+```{r}
+# Fisher's test on the detrended series
+fisher_g_test(as.numeric(resid(lm(demand ~ hr))))
+```
+
+**What the output shows.**
+
+- **Figure 10** shows the daily double peak (morning and evening) and the lower weekends, as built.
+- **Figure 11 (smoothed spectrum):** the spikes sit exactly on the red lines at $k/24$, so they all belong to the daily pattern. The biggest one is at $2/24$ (**12 hours**), not at $1/24$. This is the harmonics point from Step 2: the morning and evening peaks are about 11 hours apart, so the daily shape looks a lot like a 12-hour wave and most of its power goes to the second harmonic. I would still report this as **one daily cycle with two peaks**, not a separate 12-hour cycle. The background slopes down from left to right, which is the red-noise shape of the AR(1) errors.
+- **Figure 12 (zoom on low frequencies):** the tallest bar is at $1/168$ (**168 hours = one week**), with harmonics at $2/168$ (84 h), $4/168$ (42 h) and $5/168$ (33.6 h). These come from the weekend dip, which is a block shape, not a sine wave. The daily fundamental is at $1/24$ (red line).
+- **The table** lists the biggest ordinates: 12 h, 168 h, 84 h, 24 h, 6 h, 8 h, 33.6 h and 42 h. Every one is either $24/k$ or $168/k$, so all the structure comes from just two cycles: daily and weekly.
+- **Fisher's test** rejects white noise strongly ($g = 0.43$, $p \approx 10^{-161}$), with the largest ordinate at 12 hours. Because the noise is AR(1) and not white, the p-value is only approximate, but the peak is so large that the conclusion does not change.
+
+**So what?** The utility should plan around a daily cycle with two peaks (the evening one bigger) and a weekly cycle where weekends are lower. A forecasting model needs both, for example Fourier terms at $k/24$ and $k/168$ or weekday dummies, which is what Project 3's regression did with real Eskom data. The spectrum also shows why one sine wave per cycle would not be enough: both patterns need several harmonics.
+
+## Takeaway
+
+Spectral analysis looks at a series as a sum of waves and asks how much variation each frequency carries. To read a periodogram I convert the peak to a period in the data's units, check if other peaks are just harmonics of it, do not trust single raw ordinates, smooth at a few spans and keep what survives, and test the biggest peak with Fisher's test. The simulated demand example showed why the harmonics step matters most in practice: the tallest peak was at 12 hours, but it was part of the daily pattern. The frequency domain does not contain more information than the ACF, but it makes cycle lengths and several cycles at once much easier to see, while ARIMA-type models are still needed for forecasting.

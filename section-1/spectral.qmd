@@ -1,0 +1,13 @@
+---
+title: "Spectral Analysis and Filtering"
+---
+
+Draft: in progress
+
+## Introduction
+
+## Method
+
+## Results
+
+## Conclusion

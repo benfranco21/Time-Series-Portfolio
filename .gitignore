@@ -9,3 +9,4 @@ data/*.csv
 _site/
 *_cache/
 *_files/
+_site*.zip
