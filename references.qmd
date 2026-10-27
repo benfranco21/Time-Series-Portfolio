@@ -1,0 +1,79 @@
+---
+title: "References"
+---
+
+This page lists every source used in the portfolio in one place, so the projects and tutorials do not each need their own list. In the text I cite the sources in a short form, for example (course notes, Section 7.3.3) or (Salau's guide, Section 9). The table shows which entry each short form refers to.
+
+| Short form in the text | Entry |
+|---|---|
+| course notes, Section 6.x or 7.x | Department of Statistical Sciences (2026a) |
+| Part 1 slides | Department of Statistical Sciences (2026b) |
+| Lecture 2 slides, Lecture 3 slides | Department of Statistical Sciences (2025a, 2025b) |
+| Salau's guide | Salau (2026) |
+| course notes, Chapter 1 | Erni (2026a) |
+| course notes, Chapter 2 | Erni (2026b) |
+| course notes, Chapter 3 | Erni (2026c) |
+
+## Course material
+
+Department of Statistical Sciences (2025a). *Time Series Analysis, Part 1: Lecture 2* [lecture slides]. Honours Time Series Module, University of Cape Town. Used in Projects 1 and 3.
+
+Department of Statistical Sciences (2025b). *Time Series Analysis, Part 1: Lecture 3, ARIMA Models* [lecture slides]. Honours Time Series Module, University of Cape Town. Used in Project 1.
+
+Department of Statistical Sciences (2026a). *Time Series Analysis and Forecasting* [course notes, Part 1]. Honours 2026, University of Cape Town. Used in Projects 1, 2 and 3.
+
+Department of Statistical Sciences (2026b). *Time Series Analysis and Forecasting* [lecture slides, Part 1]. Honours 2026, University of Cape Town. Used in Project 1.
+
+Erni, B. (2026a). *Chapter 1: Exponential Smoothing* [course notes]. Honours Time Series Module, University of Cape Town. Used in Projects 3 and 4.
+
+Erni, B. (2026b). *Chapter 2: Time Series Regression Models* [course notes]. Honours Time Series Module, University of Cape Town. Used in Project 3.
+
+Erni, B. (2026c). *Chapter 3: State-Space Models* [course notes]. Honours Time Series Module, University of Cape Town. Used in Project 4.
+
+Erni, B. (2026d).  State space tutorial sheet. Honours Time Series Module, University of Cape Town. Used in the Section 2 state space tutorial (Question 1).
+
+Erni, B. (2026e).  HMM tutorial sheet. Honours Time Series Module, University of Cape Town. Used in the Section 2 HMM tutorial (Questions 2, 3 and 7).
+
+Salau, S. *ARCH and GARCH guide* [course handout]. Honours Time Series Module, University of Cape Town. Used in Project 2.
+
+## Papers cited through the course notes
+
+I did not read these papers myself. I cite them as they are presented in the Part 1 course notes, Sections 7.5 and 7.6.
+
+Bollerslev, T. (1986). Generalized autoregressive conditional heteroskedasticity. *Journal of Econometrics*, 31(3), 307–327. Used in Project 2.
+
+Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation. *Econometrica*, 50(4), 987–1007. Used in Project 2.
+
+## Data
+
+Eskom (2026). *RSA Contracted Demand and RSA Contracted Forecast, hourly, 1 April 2022 to 27 September 2026* [data set, file ESK19847]. Eskom Data Portal, supplied on request through the data request form. https://www.eskom.co.za/dataportal/data-request-form/, received 30 September 2026. Used in Projects 3 and 4.
+
+darkmatternet (2026). *S&P 500 Stocks: 25 Years of Data (Updated Daily)*, version 140 [data set]. Kaggle. https://www.kaggle.com/datasets/darkmatternet/s-and-p-500-stocks-25-years-of-data-updated-daily, accessed 17 August 2026. Used in Projects 1 and 2 and the Section 1 fundamentals practical.
+
+## Software
+
+R Core Team. *R: A Language and Environment for Statistical Computing*. R Foundation for Statistical Computing, Vienna, Austria.
+
+- dlm: Project 4
+- dplyr: Projects 1 to 4, fundamentals practical
+- Ecdat: ARCH and GARCH tutorial (the Tbrate data)
+- feasts: Project 1, fundamentals practical
+- fGarch: ARCH and GARCH tutorial
+- FinTS: Project 2
+- forecast: Projects 3 and 4
+- ggplot2: Projects 1 to 4, fundamentals practical
+- here: Projects 1 to 4, fundamentals practical
+- lubridate: Projects 3 and 4
+- patchwork: spectral analysis tutorial
+- readr: Projects 1 and 2, fundamentals practical
+- rugarch: Project 2
+- tibble: Project 3
+- tidyr: fundamentals practical
+- tidyverse: spectral analysis tutorial
+- tseries: Project 1, ARCH and GARCH tutorial
+- tsibble: Project 1, fundamentals practical
+
+## AI tools
+
+Anthropic (2026). *Claude* [large language model]. https://claude.ai. Used as described in the [AI use log](ai-use-log.qmd).
+

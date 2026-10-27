@@ -3,10 +3,12 @@ title: "R Lab: Fitting GARCH Models"
 date: 2026-09-16
 ---
 
+This page works through Problems 1 to 4 and the Black Monday exercise (Problem 8) of the class R lab on fitting GARCH models. Problems 1 to 4 use the quarterly 91-day Treasury bill rate from the `Tbrate` data in the Ecdat package, and Problem 8 uses the daily S&P 500 returns in the same package.
+
 ## Setup
 
 ```{r setup}
-data(Tbrate, package="Ecdat")
+data(Tbrate, package = "Ecdat")
 library(tseries)
 library(fGarch)
 
@@ -14,18 +16,17 @@ library(fGarch)
 # y = the log of real GDP
 # pi = the inflation rate
 
-Tbill = Tbrate[,1]
+Tbill = Tbrate[, 1]
 Del.Tbill = diff(Tbill)
 ```
 
 ## Problem 1
 
-Plot both Tbill and Del.Tbill using time series and ACF plots, and perform
-ADF and KPSS tests on both series to assess stationarity and heteroskedasticity.
+Plot both Tbill and Del.Tbill using time series and ACF plots, and perform ADF and KPSS tests on both series to assess stationarity and heteroskedasticity.
 
 ```{r problem1-plots}
-plot(Tbill)
-plot(Del.Tbill)
+plot(Tbill, main = "91-day T-bill rate", ylab = "Rate (%)")
+plot(Del.Tbill, main = "Quarterly change in the T-bill rate", ylab = "Change (percentage points)")
 
 acf(Tbill)
 acf(Del.Tbill)
@@ -37,267 +38,162 @@ adf.test(Del.Tbill)
 kpss.test(Del.Tbill)
 ```
 
-### Answer: Stationarity and heteroskedasticity of Tbill / Del.Tbill
+### Answer: stationarity
 
-**Stationarity**
+For the level, Tbill, the ADF test does not reject a unit root (p = 0.6075) and the KPSS test rejects stationarity (p ≤ 0.01), so both tests say Tbill is not stationary. Its ACF agrees. The data are quarterly, so the ACF lags are in years, and the ACF falls very slowly, to about 0.46 at a lag of 5.5 years. This is the pattern of a highly persistent series close to a unit root.
 
-Tbill (level):
-  ADF: p = 0.6075 -> fail to reject H0 (unit root)
-  KPSS: p <= 0.01 -> reject H0 (stationarity)
-  Both tests agree: Tbill is NON-STATIONARY.
-  Confirmed visually - its ACF decays very slowly (still ~0.45
-  at lag 5-6), the signature of a highly persistent, near
-  unit-root series rather than short-lived dependence.
+For the first difference, Del.Tbill, the ADF test rejects a unit root (p ≤ 0.01) and the KPSS test does not reject stationarity (p = 0.1), so both tests say Del.Tbill is stationary. Its ACF has one clear bar at the first lag, about 0.25, and only small bars after that, with two just outside the bounds at 1.75 and 4 years. So first differencing removes the stochastic trend in Tbill, and the one bar at lag 1 is the reason for an AR(1) mean later.
 
-Del.Tbill (first difference):
-  ADF: p <= 0.01 -> reject H0 (unit root)
-  KPSS: p = 0.1 -> fail to reject H0 (stationarity)
-  Both tests agree: Del.Tbill is STATIONARY.
-  Confirmed visually - its ACF drops sharply after lag 1, close
-  to a white noise pattern, with almost no spikes beyond the
-  significance bounds.
+### Answer: heteroskedasticity
 
-Conclusion: First differencing removes the stochastic trend in
-Tbill, restoring stationarity in Del.Tbill.
+The stationarity tests and the ACF of Del.Tbill only describe the conditional mean. They say nothing about the variance. A flat ACF fits pure white noise, but it also fits a series whose variance changes over time, because volatility clustering is a property of the conditional variance and not of the conditional mean.
 
-**Heteroskedasticity**
-
-The stationarity tests and the ACF of Del.Tbill only describe the
-CONDITIONAL MEAN (linear correlation) - they say nothing about the
-variance. A flat ACF is consistent with pure white noise, but also
-with a series whose variance changes over time (e.g. GARCH), since
-volatility clustering is a property of the conditional variance,
-not the conditional mean.
-
-Visually, Del.Tbill shows periods of small fluctuations interrupted
-by bursts of much larger swings (e.g. around the early-1980s
-Volcker-era rate hikes) - this is volatility clustering: large
-changes tend to be followed by large changes (of either sign), and
-small by small.
-
-This is confirmed formally by looking at the ACF of the squared
-series:
+The plot of Del.Tbill shows calm periods broken by bursts of much larger changes, the largest around 1980 to 1983, when the changes reach about ±3.5 percentage points. Large changes tend to follow large changes, of either sign, and small changes follow small ones. This is volatility clustering, and I check it formally with the ACF of the squared series.
 
 ```{r problem1-squared-acf}
 acf(Del.Tbill^2, main = "ACF of Squared Del.Tbill")
 ```
 
-Significant autocorrelation here (despite the raw series' ACF
-being flat) indicates conditional heteroskedasticity - i.e. ARCH
-effects - and motivates fitting a GARCH model to Del.Tbill's
-variance, even though no further AR/MA structure is needed for
-its mean.
+The ACF of the squared changes has several bars well above the bounds in the first two years, the largest about 0.49 at a lag of one year, even though the ACF of the changes themselves is close to flat. This shows conditional heteroskedasticity, or ARCH effects, and it is the reason to fit a model for the variance of Del.Tbill.
 
 ## Problem 2
 
-Fit an ARMA/GARCH model, identify which model is being fit, and report the
-parameter estimates.
+Fit an ARMA/GARCH model, identify which model is being fit, and report the parameter estimates.
 
 ```{r problem2-fit}
-garch.model.DelTbill = garchFit(formula = ~arma(1,0) + garch(1,0), Del.Tbill)
+garch.model.DelTbill = garchFit(formula = ~arma(1, 0) + garch(1, 0), data = Del.Tbill, trace = FALSE)
 summary(garch.model.DelTbill)
-garch.model.DelTbill@fit$matcoef
 ```
 
 ### Model being fit
 
-`garchFit(formula = ~arma(1,0) + garch(1,0), data = Del.Tbill)`
+`garchFit(formula = ~arma(1,0) + garch(1,0), data = Del.Tbill)` fits an AR(1) model for the conditional mean and an ARCH(1) model for the conditional variance, with normal innovations. With $y_t$ = Del.Tbill and $\varepsilon_t$ the error of the mean equation,
 
-This fits an AR(1) model for the conditional mean and an
-ARCH(1) model for the conditional variance, with Normal
-(Gaussian) innovations.
-
-Mean equation (AR(1)):
-  y_t = mu + ar1 * y_{t-1} + eps_t
-
-Variance equation (ARCH(1)):
-  sigma_t^2 = omega + alpha1 * eps_{t-1}^2
-
-Innovations:
-  eps_t = sigma_t * z_t,   z_t ~ N(0,1)
-
-where y_t = Del.Tbill, and eps_t is the residual from the
-mean equation at time t.
+$$y_t = \mu + \phi_1 y_{t-1} + \varepsilon_t, \qquad \sigma_t^2 = \omega + \alpha_1 \varepsilon_{t-1}^2, \qquad \varepsilon_t = \sigma_t z_t, \quad z_t \sim N(0, 1).$$
 
 ### Parameter estimates
 
-|           | Estimate | Std.Error | t value | p-value  | Sig. |
-|-----------|----------|-----------|---------|----------|------|
-| mu        | 0.08350  | 0.05391   | 1.549   | 0.1214   | ns   |
-| ar1       | 0.24163  | 0.07280   | 3.319   | 0.0009   | ***  |
-| omega     | 0.33816  | 0.06145   | 5.503   | 3.7e-08  | ***  |
-| alpha1    | 0.83483  | 0.24295   | 3.436   | 0.0006   | ***  |
+The estimates are in the Error Analysis table of the summary. The fitted equations are
 
-Fitted equations:
-  y_t       = 0.0835 + 0.2416 * y_{t-1} + eps_t
-  sigma_t^2 = 0.3382 + 0.8348 * eps_{t-1}^2
+$$y_t = 0.0835 + 0.2416\, y_{t-1} + \varepsilon_t, \qquad \sigma_t^2 = 0.3382 + 0.8348\, \varepsilon_{t-1}^2.$$
 
-Note: mu is not statistically significant (p = 0.12), so there
-is no strong evidence the mean of Del.Tbill differs from zero
-once the AR(1) term is accounted for. ar1, omega and alpha1 are
-all significant at the 0.1% level.
+The mean $\mu$ is not significant (p = 0.1214), so there is no strong evidence that the mean change differs from zero once the AR(1) term is in the model. The AR coefficient, $\omega$ and $\alpha_1$ are all significant at the 0.1% level, with p-values of 0.0009, 3.7e-08 and 0.0006.
 
 ```{r problem2-residuals}
 res = residuals(garch.model.DelTbill)
 res_std = res / garch.model.DelTbill@sigma.t
 
-par(mfrow=c(2,3))
-plot(res)
+par(mfrow = c(2, 3))
+plot(res, main = "Residuals")
 acf(res)
 acf(res^2)
-plot(res_std)
+plot(res_std, main = "Standardised residuals")
 acf(res_std)
 acf(res_std^2)
 ```
 
 ## Problem 3
 
-Describe what each residual diagnostic plot shows and what it tells us about
-the fit of the model.
+Describe what each residual diagnostic plot shows and what it tells us about the fit of the model.
 
 ### acf(res)
 
-ACF of the raw residuals from the mean (ARMA) equation, before
-standardising by the conditional SD. Bars stay within the
-significance bounds (aside from a minor poke at lag 7) -> no
-significant linear autocorrelation remains. The mean equation
-(AR(1)) is adequate.
+This is the ACF of the raw residuals of the mean equation, before they are divided by the conditional standard deviation. The bars stay inside the bounds apart from two small ones just outside, at lags 7 and 16, so no clear linear autocorrelation is left and the AR(1) mean equation is adequate.
 
 ### acf(res^2)
 
-ACF of the SQUARED raw residuals. Squaring removes sign and keeps
-magnitude, revealing dependence that a plain ACF can miss. Clear
-spikes outside the bounds (notably lag 4 and lag 8) indicate
-volatility clustering / ARCH effects in the raw residuals - this
-is exactly what motivates fitting a GARCH-type variance model.
+This is the ACF of the squared raw residuals. Squaring removes the sign and keeps the size, so it shows dependence that a plain ACF can miss. There are bars outside the bounds at lags 1, 4 and 8, the largest about 0.55 at lag 4. So the raw residuals still show volatility clustering, which is what a variance model is meant to describe.
 
 ### acf(res_std^2)
 
-ACF of the squared STANDARDISED residuals (res/sigma.t), i.e.
-after dividing out the model's own fitted conditional SD. Bars
-now stay within the bounds -> the fitted ARCH(1) variance
-equation has successfully absorbed the volatility clustering seen
-in res^2. Consistent with the non-significant Ljung-Box (R^2) and
-LM ARCH test results in the model summary.
+This is the ACF of the squared standardised residuals, res divided by sigma.t, so the model's own conditional standard deviation has been divided out. Only the bar at lag 4 reaches the bound, and the rest are well inside, so the ARCH(1) variance equation has absorbed most of the clustering seen in res^2. This agrees with the Ljung-Box tests on the squared standardised residuals in the summary (p = 0.27 at lag 10) and the LM ARCH test (p = 0.64).
 
-### garch.model.Tbill@sigma.t
+### garch.model.DelTbill@sigma.t
 
-Contains the fitted conditional standard deviation, sigma_t, at
-each time point in the sample - the model's estimated volatility
-path implied by sigma_t^2 = omega + alpha1*eps_{t-1}^2. Used to
-construct res_std = res / sigma.t.
+This slot holds the fitted conditional standard deviation $\sigma_t$ at each time point, the volatility path implied by $\sigma_t^2 = \omega + \alpha_1 \varepsilon_{t-1}^2$. It is what I divide by to get res_std.
 
 ### plot(res_std)
 
-Noteworthy: even after standardising, the spread of res_std still
-appears to widen over the index, similar to the raw residuals.
-This suggests the conditional variance model has not fully
-absorbed all the time-varying volatility - likely because the
-model was fit to the non-stationary Tbill level series rather
-than Del.Tbill, leaking trend-like behaviour into what looks like
-residual heteroskedasticity. Note this visual funnel pattern can
-persist without necessarily showing up as significant
-autocorrelation in the ACF-based tests above.
+Even after standardising, the standardised residuals are much smaller at the start of the sample, roughly the first 25 quarters, than later on. The likely reason is the size of $\omega$. Since $\sigma_t^2 = 0.338 + 0.835\,\varepsilon_{t-1}^2$, the fitted standard deviation can never fall below $\sqrt{0.338}$, about 0.58, while the changes in the early 1950s were mostly smaller than 0.3. Dividing small changes by a standard deviation of at least 0.58 gives standardised residuals close to zero. So the ARCH(1) model cannot follow the very calm start of the sample, even though the ACF tests above do not pick this up.
 
 ## Problem 4
 
-Find an ARMA/GARCH model for del.log.Tbill = diff(log(Tbill)), and consider
-any advantages of working with log-differences rather than raw differences.
+Find an ARMA/GARCH model for del.log.Tbill = diff(log(Tbill)), and consider any advantages of working with log-differences rather than raw differences.
 
 ```{r problem4-fit}
 del.log.Tbill = diff(log(Tbill))
 
 # Explore first, same workflow as before
-par(mfrow=c(1,2))
-plot(del.log.Tbill, main="Differenced log(Tbill)")
-acf(del.log.Tbill, main="ACF: del.log.Tbill")
+par(mfrow = c(1, 2))
+plot(del.log.Tbill, main = "Differenced log(Tbill)")
+acf(del.log.Tbill, main = "ACF: del.log.Tbill")
 
 adf.test(del.log.Tbill)
 kpss.test(del.log.Tbill)
 
 # Fit ARMA/GARCH, same specification as before for comparability
-garch.model.logTbill = garchFit(formula = ~arma(1,0) + garch(1,0), data = del.log.Tbill)
+garch.model.logTbill = garchFit(formula = ~arma(1, 0) + garch(1, 0), data = del.log.Tbill, trace = FALSE)
 summary(garch.model.logTbill)
 ```
 
-### ARMA(1,0)+ARCH(1) fit on del.log.Tbill = diff(log(Tbill))
+### ARMA(1,0) + ARCH(1) fit on del.log.Tbill
 
-Stationarity:
-  ADF: p <= 0.01 -> reject unit root
-  KPSS: p = 0.080 -> fail to reject stationarity (borderline but OK)
-  Both agree: del.log.Tbill is stationary.
+The ADF test rejects a unit root (p ≤ 0.01) and the KPSS test does not reject stationarity (p = 0.08, close to the 5% level but above it), so del.log.Tbill is stationary. The fitted model is
 
-Fitted model:
-  y_t       = 0.0119 + 0.4901 * y_{t-1} + eps_t
-  sigma_t^2 = 0.01206 + 0.6206 * eps_{t-1}^2
+$$y_t = 0.0119 + 0.4901\, y_{t-1} + \varepsilon_t, \qquad \sigma_t^2 = 0.01206 + 0.6206\, \varepsilon_{t-1}^2.$$
 
-mu is not significant (p=0.21); ar1, omega, alpha1 all significant.
-ar1 (0.490) is notably higher than in the Del.Tbill fit (0.242),
-suggesting log-differencing reveals more short-term mean
-dependence - consistent with relative (%) changes being more
-persistent period-to-period than raw point changes.
+The mean is not significant (p = 0.205), while the AR coefficient, $\omega$ and $\alpha_1$ are all significant. The AR coefficient of 0.490 is about twice the 0.242 in the Del.Tbill fit, which suggests that relative changes in the rate carry more over from one quarter to the next than changes in percentage points.
 
-Diagnostics:
-  - Ljung-Box on raw residuals: not significant -> mean eq. adequate
-  - Ljung-Box on squared residuals / LM ARCH test: not significant
-    overall (Q(10) borderline at p=0.069) -> ARCH(1) variance eq.
-    largely adequate
-  - Jarque-Bera / Shapiro-Wilk: still strongly reject normality,
-    and MORE strongly than the Del.Tbill fit (JB stat 45.8 vs 27.0)
-    -> heavy tails persist, Student-t innovations still worth trying
+The Ljung-Box tests on the standardised residuals are not significant, so the mean equation is adequate. The tests on the squared standardised residuals and the LM ARCH test are not significant either, although Q(10) on the squares is close (p = 0.069), so the ARCH(1) variance equation is mostly adequate. The Jarque-Bera and Shapiro-Wilk tests still reject normality, and more strongly than for Del.Tbill (Jarque-Bera 45.8 against 27.0), so the tails are heavy and Student-t innovations would be worth trying.
 
-Note: AIC is not directly comparable to the Del.Tbill model's AIC,
-since the two are fit to differently-scaled transformed data.
+The AIC of this model cannot be compared with the AIC of the Del.Tbill model, because the two are fitted to different series.
 
-## 8. On Black Monday, the return on the S&P 500 was −22.8%. Ouch!
+## Problem 8: Black Monday
 
-This exercise attempts to answer the question, "what was the conditional
-probability of a return this small or smaller on Black Monday?"
-"Conditional" means given the information available the previous trading
-day.
+On Black Monday, 19 October 1987, the return on the S&P 500 was -22.8%. This exercise asks for the conditional probability of a return this small or smaller on Black Monday, where conditional means given the information available on the previous trading day.
 
 ```{r blackmonday-setup}
 library(Ecdat)
-library(fGarch)
-data(SP500, package="Ecdat")
+data(SP500, package = "Ecdat")
 returnBlMon = SP500$r500[1805]
-x = SP500$r500[(1804-2*253+1):1804]
-plot(c(x,returnBlMon))
-results = garchFit(~arma(1,0)+garch(1,1), data=x, cond.dist="std")
+x = SP500$r500[(1804 - 2*253 + 1):1804]
+length(x)
+plot(c(x, returnBlMon), main = "S&P 500 daily returns before Black Monday",
+     ylab = "Daily return")
+results = garchFit(~arma(1, 0) + garch(1, 1), data = x, cond.dist = "std", trace = FALSE)
+round(results@fit$matcoef, 4)
 dfhat = as.numeric(results@fit$par[6])
-forecast = predict(results, n.ahead=1)
+forecast = predict(results, n.ahead = 1)
 
 z = (returnBlMon - forecast$meanForecast) / forecast$standardDeviation
 p = pt(z, df = dfhat)
+c(z = z, df = dfhat, p = p)
 
-res_std = residuals(results, standardize = TRUE)
+res_std_g11 = residuals(results, standardize = TRUE)
 
 par(mfrow = c(2, 2))
-plot(res_std, type = "l", main = "Standardized Residuals")
-acf(res_std, main = "ACF: Standardized Residuals")
-acf(res_std^2, main = "ACF: Squared Standardized Residuals")
+plot(res_std_g11, type = "l", main = "Standardized Residuals")
+acf(res_std_g11, main = "ACF: Standardized Residuals")
+acf(res_std_g11^2, main = "ACF: Squared Standardized Residuals")
 
-Box.test(res_std, lag = 10, type = "Ljung-Box")
-Box.test(res_std^2, lag = 10, type = "Ljung-Box")
+Box.test(res_std_g11, lag = 10, type = "Ljung-Box")
+Box.test(res_std_g11^2, lag = 10, type = "Ljung-Box")
 ```
 
-### Q2 answer
+### Probability of the Black Monday return
 
-All three diagnostics (time series plot, ACF of standardized
-residuals, ACF of squared standardized residuals) show no
-remaining structure - residuals sit within significance bounds,
-and Ljung-Box tests are non-significant for both the raw (p=0.92)
-and squared (p=0.89) standardized residuals.
+The plot shows the 506 daily returns used to fit the model, the two trading years before Black Monday, with the Black Monday return as the last point. Every return in the fitting window is between about -0.055 and 0.03, so the Black Monday return of -0.228 is far outside anything the model has seen.
 
-Conclusion: the AR(1)/GARCH(1,1)-t model fits adequately - both
-the conditional mean and conditional variance are well specified
-over the 506-day training window. This says nothing about Black
-Monday itself, which was excluded from the fit; the model's
-adequacy here is consistent with Black Monday being an extreme,
-essentially unpredictable event relative to this fitted model.
+I fitted an AR(1)/GARCH(1,1) model with Student-t innovations to these returns and forecast the mean and standard deviation of the next day's return. The Black Monday return is $z$ = -13.19 standard deviations from the forecast mean, and with 4.11 degrees of freedom the probability of a return this small or smaller is p = 8.13e-05. So, given the information on the day before, the fitted model gave a return like Black Monday's a probability of about 1 in 12296.
+
+### Diagnostics of the AR(1)/GARCH(1,1)-t fit (Q2)
+
+All three diagnostics, the time plot of the standardised residuals and the ACFs of the standardised residuals and their squares, show no remaining structure. The bars stay inside the bounds, and the Ljung-Box tests are not significant for the standardised residuals (p = 0.92) or their squares (p = 0.89).
+
+So the AR(1)/GARCH(1,1)-t model fits the 506-day window well, in both its mean and its variance. This says nothing about Black Monday itself, which was left out of the fit. The model fitting the window this well is consistent with Black Monday being an extreme event that the model could not have predicted.
 
 ```{r blackmonday-arch1}
-results_arch1 = garchFit(~arma(1,0) + garch(1,0), data = x, cond.dist = "std")
+results_arch1 = garchFit(~arma(1, 0) + garch(1, 0), data = x, cond.dist = "std", trace = FALSE)
 summary(results_arch1)
 
 # summary()'s reported AIC is normalized (divided by n) - multiply
@@ -315,33 +211,19 @@ acf(res_std_arch1^2, main = "ACF: Squared Std. Residuals, ARCH(1)")
 Box.test(res_std_arch1^2, lag = 10, type = "Ljung-Box")
 ```
 
-### Q3 answer
+### ARCH(1) instead of GARCH(1,1) (Q3)
 
-AIC(GARCH11) = -3298.428, AIC(ARCH1) = -3298.121 - nearly identical,
-GARCH(1,1) only marginally better.
+The AIC is -3298.428 for GARCH(1,1) and -3298.121 for ARCH(1), almost the same, with GARCH(1,1) only slightly lower.
 
-Residual diagnostics for AR(1)/ARCH(1)-t: Ljung-Box on squared std.
-residuals (p=0.27,0.43,0.66) and LM ARCH test (p=0.15) are all
-non-significant, and the ACF plots show no structure beyond lag 0
--> formally, the ARCH(1) model also appears adequate.
+The residual diagnostics of the AR(1)/ARCH(1)-t model are all non-significant. The Ljung-Box tests on the squared standardised residuals give p = 0.27, 0.43 and 0.66 at lags 10, 15 and 20, the LM ARCH test gives p = 0.15, and the ACF plots show no structure. So on these tests the ARCH(1) model also looks adequate.
 
-However: alpha1 is NOT statistically significant in this fit
-(p=0.375), unlike in the GARCH(1,1) model where alpha1 was clearly
-significant (p=0.003). This suggests the ARCH(1) model's apparent
-adequacy is driven mainly by its very heavy-tailed Student-t
-innovations (shape ~ 3.96) rather than genuine time-varying
-conditional variance - i.e. the model explains extreme returns via
-fat tails rather than volatility clustering.
+However, $\alpha_1$ is not significant in this fit (p = 0.375), and it is not significant in the GARCH(1,1) fit either (p = 0.167). Both models have very heavy-tailed Student-t innovations, with about 4 degrees of freedom (shape 3.96 for ARCH(1) and 4.11 for GARCH(1,1)). This suggests that over these two years most of the extreme returns are explained by fat tails, and that the evidence for a variance that changes from day to day is weak.
 
-Conclusion: AR(1)/ARCH(1)-t is statistically adequate by these
-diagnostics, but GARCH(1,1)-t remains the more defensible model,
-since it achieves the same (or marginally better) fit with all
-coefficients - including the ARCH term - individually significant
-and interpretable.
+So both models pass the diagnostics, and their AICs are almost the same. GARCH(1,1) has the slightly lower AIC, and it is the model I used for the Black Monday probability, but the data in this window do not clearly prefer it to ARCH(1).
 
 ```{r blackmonday-ar1}
 fit_ar1 = arima(x, order = c(1, 0, 0))
-summary(fit_ar1)
+fit_ar1
 
 res_ar1 = residuals(fit_ar1)
 res_ar1_std = res_ar1 / sd(res_ar1)   # standardize by constant SD (no time-varying sigma)
@@ -354,28 +236,10 @@ Box.test(res_ar1_std, lag = 10, type = "Ljung-Box")
 Box.test(res_ar1_std^2, lag = 10, type = "Ljung-Box")
 ```
 
-### Answer
+### AR(1) with a constant variance
 
-Raw residual diagnostics:
-  Ljung-Box, Q(10): p = 0.922 -> no significant linear
-  autocorrelation remains; the AR(1) mean equation is adequate,
-  essentially matching the result from the GARCH(1,1) fit.
+For the residuals, the Ljung-Box test at lag 10 gives p = 0.922, so no linear autocorrelation is left and the AR(1) mean equation is adequate, the same result as for the GARCH(1,1) fit.
 
-Squared residual diagnostics:
-  Ljung-Box, Q(10): p = 0.142 -> technically fails to reject at
-  the 5% level, but the test statistic (14.74) is roughly 3x
-  larger than the GARCH(1,1) model's (5.04) on the same data -
-  noticeably weaker evidence of adequacy than either GARCH-type
-  fit.
+For the squared residuals, the Ljung-Box test at lag 10 gives p = 0.142, so it does not reject at the 5% level. But the test statistic, 14.74, is about three times the 5.04 of the GARCH(1,1) model on the same data, which is weaker evidence that the model is adequate.
 
-Conclusion: A Gaussian AR(1) model has no variance equation at
-all, so it has no mechanism to capture volatility clustering.
-While the squared-residual test does not formally reject at lag
-10, the elevated test statistic points toward remaining ARCH
-structure that a constant-variance model cannot account for. This
-matches the stylised facts of return series (near-zero
-autocorrelation in levels, strong autocorrelation in squares) and
-suggests the Gaussian AR(1) model is, at best, borderline and
-likely NOT adequate - unlike the GARCH(1,1) and ARCH(1) models,
-which both showed comfortably non-significant squared-residual
-autocorrelation across all lags tested.
+A Gaussian AR(1) model has no variance equation, so it has no way to capture volatility clustering. The squared-residual test does not formally reject at lag 10, but the larger statistic points to ARCH structure that a constant-variance model cannot account for. This matches the stylised facts of returns, near-zero autocorrelation in the returns and clear autocorrelation in the squares. So the Gaussian AR(1) model is at best borderline, and I would not call it adequate, unlike the GARCH(1,1) and ARCH(1) models, whose squared-residual tests were comfortably non-significant at every lag tested.

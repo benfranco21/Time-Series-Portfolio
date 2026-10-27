@@ -1,13 +1,264 @@
 ---
 title: "State Space Models Tutorial"
+format: html
 ---
 
-Draft: in progress
+This page works through Question 1, "Simulation and Kalman filter", of Birgit's state space models and Kalman filter tutorial. I simulate 100 observations from a state space model whose $G_t$ and $F_t$ change at every step, write my own Kalman filter, estimate $V$ and $W$ by maximum likelihood, and then check the fit and forecast five steps ahead.
 
-## Introduction
+## Set-up
 
-## Method
+```{r setup}
+library(tidyverse)
+library(patchwork)
 
-## Results
+theme_set(theme_minimal(base_size = 11))
+col_obs   <- "#2C3E50"
+col_true  <- "#C0392B"
+col_fit   <- "#2980B9"
+```
 
-## Conclusion
+## Simulating the data
+
+```{r simulate-data}
+set.seed(5)
+
+n <- 100
+h <- 5
+
+V_true <- 2
+W_true <- 1
+
+tt <- 1:(n + h)
+GG <- (-1)^tt / 2
+FF <- round(rnorm(n + h, mean = 1, sd = 0.2), 1)
+
+theta <- numeric(n)
+y <- numeric(n)
+theta_prev <- rnorm(1,0,1)
+
+for (i in 1:n){
+    theta[i] <- GG[i] * theta_prev + rnorm(1,0,sqrt(W_true))
+    y[i] <- FF[i] * theta[i] + rnorm(1,0,sqrt(V_true))
+    theta_prev <- theta[i]
+}
+
+sim <- tibble(t = 1:n, y = y, theta = theta, F = FF[1:n], G = GG[1:n])
+head(sim)
+```
+
+The first rows show that $F_t$ changes at every step and that $G_t$ alternates between -0.5 and 0.5, so the state flips sign from one step to the next.
+
+```{r plot-sim}
+#| fig-cap: "Figure 1: Simulated observations (black) and the true state (red)."
+ggplot(sim, aes(t)) +
+  geom_line(aes(y = y, colour = "Observation y")) +
+  geom_line(aes(y = theta, colour = "True state theta")) +
+  scale_colour_manual(values = c(col_obs, col_true)) +
+  labs(x = "Time", y = NULL, colour = NULL)
+```
+
+## My Kalman filter
+
+```{r kalman-filter}
+KF <- function(y ,FF, GG, m0, C0, V, W){
+    n <- length(y)
+    at <- numeric(n)
+    Rt <- numeric(n)
+    ft <- numeric(n)
+    Qt <- numeric(n)
+    mt <- numeric(n)
+    Ct <- numeric(n)
+    et <- numeric(n)
+    Kt <- numeric(n)
+
+    m_prev <- m0
+    C_prev <- C0
+
+    for (t in 1:n){
+        at[t] <- GG[t] * m_prev
+        Rt[t] <- GG[t]^2 * C_prev + W
+
+        ft[t] <- FF[t] * at[t]
+        Qt[t] <- FF[t]^2 * Rt[t] + V
+
+        if (is.na(y[t])){
+            Kt[t] <- 0
+            et[t] <- NA
+            mt[t] <- at[t]
+            Ct[t] <- Rt[t]
+
+        } else{
+            Kt[t] <- Rt[t] * FF[t]/Qt[t]
+            et[t] <- y[t] - ft[t]
+            mt[t] <- at[t] + Kt[t] * et[t]
+            Ct[t] <- Rt[t] - Kt[t] * FF[t] * Rt[t]
+
+        }
+
+        m_prev <- mt[t]
+        C_prev <- Ct[t]
+        
+    }  
+      list(at = at, Rt = Rt, ft = ft, Qt = Qt, mt = mt, Ct = Ct, et = et, Kt = Kt)
+}
+```
+
+```{r kalman-test}
+kf_test <- KF(y, FF[1:n], GG[1:n], m0 = 0, C0 = 1, V = 2, W = 1)
+c(m1 = kf_test$mt[1], C1 = kf_test$Ct[1], K1 = kf_test$Kt[1])
+```
+
+As a check I worked out the first step by hand with the true variances. With $m_0 = 0$, $C_0 = 1$, $G_1 = -0.5$ and $F_1 = 0.8$, the prediction is $a_1 = 0$ with $R_1 = 0.25 + 1 = 1.25$, and $Q_1 = 0.64 \times 1.25 + 2 = 2.8$. So $K_1 = 1.25 \times 0.8 / 2.8 = 0.357$, $m_1 = 0.357 \times (-3.32) = -1.19$ and $C_1 = 1.25 - 0.357 \times 0.8 \times 1.25 = 0.893$, which match the output.
+
+## Estimating V and W
+
+```{r estimating-V-W}
+negloglik <- function(par, y, FF, GG){
+    V <- exp(par[1])
+    W <- exp(par[2])
+    kf <- KF(y , FF, GG, m0 = 0, C0 = 1, V = V, W=W)
+    0.5 * sum(log(kf$Qt) + kf$et^2 / kf$Qt)
+}
+
+starts <- list(c(0,0), c(log(5), log(0.2)), c(log(0.2), log(5)))
+
+fits <- map(starts, function(x){
+    nlm(negloglik, p = x, y = y, FF = FF[1:n], GG = GG[1:n], hessian = TRUE)
+})
+
+tibble(start_V = map_dbl(starts, ~ exp(.x[1])),
+       start_W = map_dbl(starts, ~ exp(.x[2])),
+       V_hat   = map_dbl(fits, ~ exp(.x$estimate[1])),
+       W_hat   = map_dbl(fits, ~ exp(.x$estimate[2])),
+       negLL   = map_dbl(fits, ~ .x$minimum),
+       code    = map_int(fits, ~ .x$code))
+```
+
+```{r CI}
+fit <- fits[[1]]
+se <- sqrt(diag(solve(fit$hessian)))
+
+est <- tibble(parameter = c("V", "W"),
+              true      = c(V_true, W_true),
+              estimate  = exp(fit$estimate),
+              lower95   = exp(fit$estimate - 1.96 * se),
+              upper95   = exp(fit$estimate + 1.96 * se))
+est
+```
+
+## Filtered state
+
+```{r fit-model}
+V_hat <- exp(fit$estimate[1])
+W_hat <- exp(fit$estimate[2])
+
+kf <- KF(y, FF[1:n], GG[1:n], m0 = 0, C0 = 1, V = V_hat, W = W_hat)
+
+sim <- sim |>
+  mutate(filtered = kf$mt,
+         f_lo     = kf$mt - 1.96 * sqrt(kf$Ct),
+         f_hi     = kf$mt + 1.96 * sqrt(kf$Ct),
+         fitted   = kf$ft)
+
+```
+
+```{r plot-intervals}
+#| fig-cap: "Figure 2: Top: filtered state with 95% interval against the true state. Bottom: one-step fitted values against the observations."
+p_state <- ggplot(sim, aes(t)) +
+  geom_ribbon(aes(ymin = f_lo, ymax = f_hi), fill = col_fit, alpha = 0.2) +
+  geom_line(aes(y = theta, colour = "True state")) +
+  geom_line(aes(y = filtered, colour = "Filtered state")) +
+  scale_colour_manual(values = c(col_fit, col_true)) +
+  labs(x = NULL, y = expression(theta[t]), colour = NULL)
+
+p_fit <- ggplot(sim, aes(t)) +
+  geom_point(aes(y = y, colour = "Observation"), size = 1) +
+  geom_line(aes(y = fitted, colour = "One-step fitted")) +
+  scale_colour_manual(values = c(col_obs, col_fit)) +
+  labs(x = "Time", y = expression(y[t]), colour = NULL)
+
+p_state / p_fit
+```
+
+
+```{r coverage}
+sim |>
+  summarise(coverage_95   = mean(theta >= f_lo & theta <= f_hi),
+            rmse_filtered = sqrt(mean((theta - filtered)^2)),
+            rmse_y_only   = sqrt(mean((theta - y / F)^2)),
+            mean_gain     = mean(kf$Kt))
+```
+
+## Diagnostics
+
+```{r plot-residuals}
+#| fig-cap: "Figure 3: Standardised one-step errors: time plot, ACF and normal Q-Q plot."
+res <- tibble(t = 1:n, z = kf$et / sqrt(kf$Qt))
+
+acf_res <- acf(res$z, lag.max = 20, plot = FALSE)
+acf_df  <- tibble(lag = acf_res$lag[-1], acf = acf_res$acf[-1])
+ci      <- 1.96 / sqrt(n)
+
+p_time <- ggplot(res, aes(t, z)) +
+  geom_hline(yintercept = 0, colour = "grey60") +
+  geom_line(colour = col_obs) +
+  labs(x = "Time", y = "Standardised error")
+
+p_acf <- ggplot(acf_df, aes(lag, acf)) +
+  geom_hline(yintercept = c(-ci, ci), linetype = "dashed", colour = col_fit) +
+  geom_segment(aes(xend = lag, yend = 0), colour = col_obs) +
+  labs(x = "Lag", y = "ACF")
+
+p_qq <- ggplot(res, aes(sample = z)) +
+  stat_qq(colour = col_obs, size = 1) +
+  stat_qq_line(colour = col_true) +
+  labs(x = "Theoretical", y = "Sample")
+
+p_time / (p_acf | p_qq)
+
+c(mean = mean(res$z), sd = sd(res$z))
+res$t[which.max(abs(res$z))]   # time of the largest standardised error
+Box.test(res$z, lag = 10, type = "Ljung-Box")
+shapiro.test(res$z)
+```
+
+## Forecasting five steps ahead
+
+```{r forecast-h5}
+y_ext <- c(y, rep(NA, h))
+kf_fc <- KF(y_ext, FF, GG, m0 = 0, C0 = 1, V = V_hat, W = W_hat)
+
+fc <- tibble(t     = (n + 1):(n + h),
+             F     = FF[(n + 1):(n + h)],
+             G     = GG[(n + 1):(n + h)],
+             y_hat = kf_fc$ft[(n + 1):(n + h)],
+             sd    = sqrt(kf_fc$Qt[(n + 1):(n + h)])) |>
+  mutate(lower = y_hat - 1.96 * sd,
+         upper = y_hat + 1.96 * sd)
+fc
+```
+
+```{r plot-forecast}
+#| fig-cap: "Figure 4: The last 30 observations with the 5-step forecast and 95% prediction intervals."
+ggplot() +
+  geom_line(data = filter(sim, t > 70), aes(t, y), colour = col_obs) +
+  geom_ribbon(data = fc, aes(t, ymin = lower, ymax = upper),
+              fill = col_fit, alpha = 0.2) +
+  geom_line(data = fc, aes(t, y_hat), colour = col_fit) +
+  geom_point(data = fc, aes(t, y_hat), colour = col_fit) +
+  labs(x = "Time", y = expression(y[t]))
+```
+
+## Discussion
+
+In this tutorial I simulated 100 observations from a state space model where the state flips sign every step and the observation is scaled by a known explanatory variable. Because I simulated the data I knew the true state and the true variances, so I could check every part of my own Kalman filter against the truth.
+
+The filtered state followed the true state closely and 96% of the true values fell inside the 95% intervals, so the uncertainty from the filter was honest. The filter was also much better than estimating the state from each observation on its own, with an RMSE of 0.85 against 1.45 for y/F. This is because the filter combines the prediction from the state equation with the new observation. The average Kalman gain was 0.39, so each observation only moved the estimate about 40% of the way towards the data. That makes sense here because the measurement noise, V = 2, is bigger than the state noise, W = 1.
+
+The same filter gave me the likelihood through the one-step forecast errors, so I could estimate V and W with nlm() on the log scale. All three starting values ended at V = 1.97 and W = 1.08, close to the true values of 2 and 1, and both 95% intervals contained the truth. The intervals were wide though, especially for W, 0.40 to 2.87, because with 100 observations the data can only weakly separate measurement noise from state noise. I saw this directly with my first seed (2026), in a run that is not shown on this page, where W was estimated as 0 and the filter put all the variation down to measurement noise. This was not a coding error but a boundary solution, since all three starting values gave the same result. It showed me why the notes say the likelihood can be flat and that you should be careful when an estimate sits on the boundary. For the rest of the tutorial I used seed 5, which gives a more typical dataset where both variances can be estimated.
+
+Forecasting needed no extra code. Adding five NAs to the end of the series meant the gain was zero for those steps, so the filter only predicted and added variance, which is the same way it handles missing values. The forecasts went back towards zero within two steps, and the half-widths of the intervals were 3.06, 3.90, 3.76, 3.60 and 3.60, so after the first two steps they settled at about ±3.6 instead of widening without limit. Both of these come from |G| = 0.5. The state is stationary, so the information the filter has about the current state halves every step and the forecast becomes the unconditional distribution of y. The forecast at t = 101 and t = 102 was the same, 0.18, because the state halved but F doubled from 0.6 to 1.2, which showed me that both G and F feed into every forecast.
+
+The standardised one-step errors had mean 0.02 and standard deviation 1.01, the ACF had no spikes outside the bounds and the Ljung-Box test did not reject (p = 0.24). The Q-Q plot was close to the line apart from one large error, at t = 62 in the time plot, and the Shapiro-Wilk test did not reject normality at the 5% level (p = 0.07). So the model captured the structure in the data, which is what I expected since the data came from this model.
+
+Compared to Project 4, where G and F were fixed and the data was real, this question showed me how the filter works when both change at every step, and what the estimates look like when I know the true answer.

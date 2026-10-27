@@ -1,13 +1,207 @@
 ---
 title: "Hidden Markov Models"
+format:
+  html:
+    toc: true
+editor: visual
 ---
 
-Draft: in progress
+This page works through three questions of Birgit's hidden Markov models tutorial, in the order that builds up the ideas: Question 3 computes the likelihood of a short series in two ways, Question 7 turns the forward algorithm into a likelihood function, and Question 2 decodes the most likely state sequence with the Viterbi algorithm.
 
-## Introduction
+## Set-up
 
-## Method
+```{r setup}
+#| message: false
+#| warning: false
+library(tidyverse)
+theme_set(theme_minimal(base_size = 11))
+```
 
-## Results
+## Question 3: Likelihood of a Poisson HMM
 
-## Conclusion
+```{r q3-setup}
+
+gamma <- matrix(c(0.1, 0.9, 0.4, 0.6), nrow = 2, byrow = TRUE)
+
+lambda <- c(1,3)
+m <- 2
+
+delta <- solve(t(diag(m) - gamma  + 1), rep(1,m))
+delta
+delta %*% gamma
+
+```
+
+```{r q3-part-a}
+x <- c(0,2,1)
+
+paths <- expand.grid(z1 = 1:2, z2 = 1:2, z3 = 1:2)
+
+paths <- paths |> 
+    mutate(p_paths = delta[z1] * gamma[cbind(z1,z2)] * gamma[cbind(z2,z3)], 
+    p_obs = dpois(x[1], lambda[z1]) *
+            dpois(x[2], lambda[z2]) * 
+            dpois(x[3], lambda[z3]),
+    joint = p_paths * p_obs
+ )
+
+ paths
+ sum(paths$joint)
+
+
+```
+
+```{r q3-part-b}
+P <- function(x) diag(dpois(x, lambda))
+L <- delta %*% P(0) %*% gamma %*% P(2) %*% gamma %*% P(1) %*% rep(1,m)
+L
+
+alpha1 <- delta %*% P(0)
+alpha2 <- alpha1 %*% gamma %*% P(2)
+alpha3 <- alpha2 %*% gamma %*% P(1)
+rbind(alpha1, alpha2, alpha3)
+sum(alpha3)
+```
+
+I started the chain from its stationary distribution, δ = (0.308, 0.692), and the second printed line confirms that δΓ = δ. Both methods gave the same probability, P(X1 = 0, X2 = 2, X3 = 1) = 0.00729. In part a I listed all 2^3 = 8 possible state sequences, multiplied the probability of each path by the probability of the counts given that path, and added them up. The path 1 → 2 → 1 contributed the most (0.00336), because a 0 fits the quiet state, a 2 fits the busy state and the chain leaves state 1 with probability 0.9. In part b the matrix formula δP(0)ΓP(2)ΓP(1)1′ gave the same answer without listing any paths. Each step of the product is one step of the forward algorithm, and α3 holds the sum over all paths that end in each state, 0.00421 for state 1 and 0.00308 for state 2.
+
+The two methods agree, but they scale very differently. Listing the paths needs m^T terms, so for 100 observations from a 2-state model there would be about 10^30 paths, while the forward algorithm only needs one small matrix product per time step. This is why the likelihood of an HMM is computed with the forward algorithm.
+
+## Question 7: Two-state Bernoulli HMM
+
+```{r q7-setup}
+
+gamma7 <- matrix(c(0.5,0.5,0.25,0.75), nrow = 2, byrow = TRUE)
+
+delta7 <- c(1,2)/3
+prob7 <- c(0.5,1)
+
+P7 <- function(x) diag(dbinom(x, size = 1, prob = prob7))
+
+P7(0)
+P7(1)
+
+delta7 %*% gamma7
+
+```
+
+```{r q7-likelihood-function}
+bern_lik <- function(x, delta, gamma, prob){
+      alpha <- delta %*% diag(dbinom(x[1], size = 1, prob = prob))
+  for (i in 2:length(x)) {
+    alpha <- alpha %*% gamma %*% diag(dbinom(x[i], size = 1, prob = prob))
+  }
+  sum(alpha)
+}
+
+L111 <- bern_lik(c(1,1,1), delta7, gamma7, prob7)
+c(L = L111, target = 29/48)
+all.equal(L111, 29/48)
+```
+
+For this model P(0) = diag(0.5, 0) and P(1) = diag(0.5, 1), and δ = (1/3, 2/3) is again the stationary distribution, since the last printed line gives δΓ = δ. A 1 can come from either state, but a 0 can only come from state 1, so any 0 in the sequence sets the forward probability of state 2 to zero at that step. I wrote a likelihood function that starts with α1 = δP(x1) and then loops αt = αt−1 Γ P(xt) over the rest of the sequence, so it works for any length and not only the three observations in Question 3.
+
+For the sequence 1, 1, 1 the function gave L = 0.6042, which is exactly 29/48, and I got the same answer working through the forward probabilities by hand. The probability is high because the chain spends two thirds of its time in state 2, which always produces a 1, and it stays there with probability 0.75. The same function with the parameters as inputs is what I would give to nlm() if Γ and the state probabilities had to be estimated from data.
+
+## Question 2: Viterbi decoding
+
+```{r q2-setup}
+
+obs <- c("x", "x", "x", "x", "x", "x", "x", "z", "z", "y")
+
+initial <- c(0.4, 0.3, 0.3)
+
+tpm <- matrix(c(0.5, 0.3, 0.2, 0.1, 0.6, 0.3, 0.2,0.2,0.6), byrow = TRUE, ncol = 3)
+
+emmprob <- matrix(c(0.6,0.2,0.2,0.1,0.5,0.4,0.3,0.3,0.4), byrow = TRUE, ncol = 3)
+
+states <- c("A", "B", "C")
+dimnames(tpm)     <- list(from = states, to = states)
+dimnames(emmprob) <- list(state = states, word = c("x", "y", "z"))
+
+tpm
+emmprob
+
+```
+
+```{r q2-viterbi-algorithm}
+
+viterbi <- function(obs, initial, tpm, emmprob){
+    Tn <- length(obs)
+    m <- nrow(tpm)
+    xi <- matrix(NA, nrow = Tn, ncol = m)
+    back <- matrix(NA, nrow = Tn, ncol = m)
+
+    xi[1,] <- log(initial) + log(emmprob[,obs[1]])
+
+    for (t in 2:Tn){
+        for (j in 1:m){
+            cand <- xi[t - 1,] + log(tpm[,j])
+            back[t,j] <- which.max(cand)
+            xi[t,j] <- max(cand) + log(emmprob[j, obs[t]])
+        }
+    }
+
+    path <- numeric(Tn)
+    path[Tn] <- which.max(xi[Tn,])
+    for (t in (Tn-1):1){
+        path[t] <- back[t +1, path[t+1]]
+    }
+
+    list(path = rownames(tpm)[path], xi = xi, back = back)
+}
+
+```
+
+```{r q2-test}
+
+vit <- viterbi(obs, initial, tpm, emmprob)
+
+true_path <- c("A", "C", "A", "A", "A", "A", "A", "B", "B", "B")
+
+dec <- tibble(t = 1:length(obs),
+            word = obs,
+            viterbi = vit$path,
+            true = true_path,
+            match = viterbi == true)
+
+dec
+mean(dec$match)
+
+```
+
+```{r q2-plot}
+#| fig-cap: "Figure 1: Viterbi path (blue) against the true state sequence (red), with the observed word above each time point."
+long <- dec |>
+  pivot_longer(c(viterbi, true), names_to = "path", values_to = "state") |>
+  mutate(y = match(state, states) + ifelse(path == "true", 0.05, -0.05))
+
+ggplot(long, aes(t, y, colour = path)) +
+  geom_step(linewidth = 0.8) +
+  geom_point(size = 2.5) +
+  geom_text(data = dec, aes(t, 3.4, label = word), colour = "grey30", inherit.aes = FALSE) +
+  scale_colour_manual(values = c(true = "#C0392B", viterbi = "#2980B9")) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_y_continuous(breaks = 1:3, labels = states) +
+  labs(x = "Time", y = "Hidden state", colour = NULL)
+```
+
+```{r q2-check}
+path_logprob <- function(z) {
+  s <- match(z, states)
+  w <- match(obs, c("x", "y", "z"))
+  log(initial[s[1]]) +
+    sum(log(tpm[cbind(s[-length(s)], s[-1])])) +
+    sum(log(emmprob[cbind(s, w)]))
+}
+
+c(viterbi = path_logprob(vit$path),
+  true    = path_logprob(true_path),
+  ratio   = exp(path_logprob(vit$path) - path_logprob(true_path)))
+```
+
+I coded the Viterbi algorithm on the log scale, as the notes suggest, so that multiplying many small probabilities does not underflow. At each time point the algorithm keeps the best path into each state and stores which state it came from, then traces these back from the most likely final state. For the observations x x x x x x x z z y it decoded the path A A A A A A A B B B, which matches the true sequence at 9 of the 10 time points.
+
+The only mistake is at t = 2, where the true state was C but Viterbi chose A. This is not an error in the algorithm. Viterbi finds the single most likely path given the data, and I checked this by computing the probability of both paths: the Viterbi path is 12.5 times more likely than the true one. The two paths only differ at t = 2, and staying in A (0.5 × 0.5) and producing an x from A (0.6) gives 0.25 × 0.6 = 0.15, against 0.2 × 0.2 × 0.3 = 0.012 for switching A → C → A and producing the x from C. So a short visit to C in the middle of a run of x's is smoothed away, because nothing in the data points to it.
+
+The switch to B at t = 8 is picked up straight away, because z and y are both much more likely from B than from A. This shows that decoding works well when the states produce clearly different observations, and struggles when a state is short-lived and its observations look like those of another state.

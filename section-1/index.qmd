@@ -2,10 +2,18 @@
 title: "Section 1"
 ---
 
-This section covers Base R and tidyverse time series fundamentals, plus a worked tutorial on GARCH models.
+Section 1 of the course covered time series fundamentals, ARIMA models, ARCH and GARCH models, and spectral analysis. The two substantial projects for this section are [Project 1](../projects/project-01-financial-forecasting/project-01.qmd), AR, MA and ARIMA models for AAPL prices and returns, and [Project 2](../projects/project-02-garch-volatility/project-02.qmd), a GARCH model for the volatility of the same returns. The pages below are the smaller pieces of work for this section.
+
+**Practical 1: time series objects in R.** My follow-up to the first class practical. I build the 2019 AAPL daily closing price as a base R `ts` object and as a `tsibble`, and look at its time plot, daily changes, ACF and STL decomposition. It is where I first met the problem of indexing trading-day data, which comes back in Projects 1 and 2.
+
+**R lab: fitting GARCH models.** Problems 1 to 4 and the Black Monday exercise of the class R lab. I fit AR(1) and ARCH(1) models to the quarterly change in the Treasury bill rate with fGarch, check the residuals, and use an AR(1)/GARCH(1,1) model with Student-t innovations to find the conditional probability of the Black Monday return.
+
+**Spectral analysis.** A tutorial I worked through on my own, following the spectral analysis part of the Part 1 notes and slides. It goes from the periodogram and aliasing to smoothing, Fisher's test and what differencing does to a spectrum, and ends with a simulated hourly electricity demand series.
+
+**An idea beyond the lectures.** In Project 2 I split the interval coverage of the ARIMA and GARCH forecasts by the forecast volatility, to see whether each model's 95% intervals hold up in calm and in volatile periods separately, and not only on average.
 
 ## Contents
 
-- [Base R ts() Fundamentals](fundamentals.qmd)
-- [Worked Tutorial: Fitting GARCH Models](arch-garch.qmd)
-- [Spectral Analysis and Filtering](spectral.qmd)
+- [Practical 1: Time Series Objects in R](fundamentals.qmd)
+- [R Lab: Fitting GARCH Models](arch-garch.qmd)
+- [Spectral Analysis](Spectral_Analysis.qmd)

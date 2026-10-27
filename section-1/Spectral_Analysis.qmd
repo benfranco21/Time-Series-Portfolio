@@ -4,7 +4,9 @@ format: html
 editor: visual
 ---
 
-## Spectral Analysis
+Spectral analysis is covered in the Part 1 notes and slides, but there was no practical on it, so I worked through it on my own as a set of questions and answers, section by section, ending with a simulated electricity demand example.
+
+## Section 1: Set-up and helper functions
 
 ```{r}
 #| message: false
@@ -80,6 +82,8 @@ frequency(ts(1:24, frequency = 12))
 frequency(ts(1:8, frequency = 4))
 ```
 
+In R the `frequency` argument of `ts()` is the number of observations per cycle, so it returns 12 for monthly data and 4 for quarterly data. That is the period $m$, not the frequency $f = 1/m$ used in spectral analysis, which is the collision in the section title.
+
 **Question:** Complete the table.
 
 | Data      | Cycle  | Period ($m$) | Frequency ($f = 1/m$) |
@@ -114,17 +118,17 @@ ggplot(waves, aes(t, y, colour = wave)) +
 
 **Answer:**
 
-No to both. The Nyquist frequency is $f_N = 1/2$ cycle per observation — the fastest oscillation that sampling once per observation can represent. Since $0.70 > f_N$, this process cannot be resolved directly.
+No to both. The Nyquist frequency is $f_N = 1/2$ cycle per observation, the fastest oscillation that sampling once per observation can represent. Since $0.70 > f_N$, this process cannot be resolved directly.
 
-The oscillation does not vanish; it aliases, folding back into $[0, 1/2]$ via $f_{\text{alias}} = |f - k|$ for the nearest integer $k$:
+The oscillation does not vanish. It aliases, folding back into $[0, 1/2]$ via $f_{\text{alias}} = |f - k|$ for the nearest integer $k$:
 
 $$
 f_{\text{alias}} = |0.70 - 1| = 0.30
 $$
 
-So a series sampled once per observation will look identical to a slower process oscillating at $f = 0.30$ (period $\approx 3.33$ observations) — not like anything at $f = 0.70$.
+So a series sampled once per observation will look identical to a slower process oscillating at $f = 0.30$ (period $\approx 3.33$ observations), not like anything at $f = 0.70$.
 
-This is also **irreversible**: the sampled values produced by a true $f = 0.70$ process and a true $f = 0.30$ process are numerically identical (cf. Figure 1, periods 1.5 vs. 3). No later analysis, however sophisticated, can recover the true frequency — the distinguishing information was never captured, not merely obscured. The practical implication is that the sampling interval must be chosen *before* data collection, based on the fastest frequency of interest; the problem cannot be fixed after the fact.
+This is also **irreversible**. The sampled values produced by a true $f = 0.70$ process and a true $f = 0.30$ process are numerically identical (cf. Figure 1, periods 1.5 vs. 3). No later analysis, however sophisticated, can recover the true frequency, because the distinguishing information was never captured, not merely obscured. The practical implication is that the sampling interval must be chosen *before* data collection, based on the fastest frequency of interest. The problem cannot be fixed after the fact.
 
 ## Section 5: A series as a sum of waves
 
@@ -155,7 +159,7 @@ The two numbers agree exactly (216.63), so the periodogram ordinate at $f_j$ is 
 
 **Answer:**
 
-With a frequency of 0.0833, we transform that into a period of $1/0.0833 = 12$ months. This period is what we report to the reader: a 12-month (annual) cycle accounts for a large share of the variation in the series. When discussing time series data we talk about the period, in the units of the data, rather than the frequency.
+With a frequency of 0.0833, I turn it into a period of $1/0.0833 = 12$ months. The period is what I report to the reader: a 12-month (annual) cycle accounts for a large share of the variation in the series. When describing a time series I give the period, in the units of the data, and not the frequency.
 
 ## Section 7: A first worked example: a known cycle
 
@@ -172,7 +176,7 @@ plot(ts_cyc, main = "A period-24 cycle buried in noise",
 
 **Answer:**
 
-The frequency, given the period $m = 24$, we would expect from the above time series would be $f = 1/24 = 0.0417$.
+Given the period $m = 24$, I would expect the periodogram of this series to peak at $f = 1/24 = 0.0417$.
 
 ```{r}
 pg_cyc <- pgram(y_cyc)
@@ -208,7 +212,13 @@ sp_cyc <- spec.pgram(y_cyc, taper = 0, detrend = FALSE, fast = FALSE,
 
 jmax <- which.max(sp_cyc$spec)
 c(peak_frequency = sp_cyc$freq[jmax],
-  peak_period    = 1 / sp_cyc$freq[jmax])
+  peak_period    = 1 / sp_cyc$freq[jmax],
+  peak_height    = sp_cyc$spec[jmax])
+
+# the same series passed as a ts object with frequency 24
+sp_ts <- spec.pgram(ts_cyc, taper = 0, detrend = FALSE, fast = FALSE, plot = FALSE)
+c(peak_frequency_ts = sp_ts$freq[which.max(sp_ts$spec)],
+  peak_height_ts    = max(sp_ts$spec))
 ```
 
 ```{r}
@@ -232,7 +242,7 @@ Both give the peak at $f = 1/24$, period 24, and here even the heights match (23
 
 ### Step 1: convert the peak to a period
 
-Find the largest ordinate, read off its frequency, invert it and attach the units. In Section 7 the peak at $f = 0.0417$ is a cycle of 24 observations; if the data were hourly, that is a 24-hour (daily) cycle.
+Find the largest ordinate, read off its frequency, invert it and attach the units. In Section 7 the peak at $f = 0.0417$ is a cycle of 24 observations, and if the data were hourly, that is a 24-hour (daily) cycle.
 
 ### Step 2: check for harmonics
 
@@ -344,7 +354,7 @@ fisher_g_test(y_cyc)         # the period-24 series from Section 7
 
 **Answer:**
 
-The null hypothesis is that the series is Gaussian white noise, so its spectrum is flat and no single frequency stands out. $g$ is the share of the total that sits in the largest ordinate. For white noise $g = 0.043$ and $p = 0.53$, so I do not reject: the largest ordinate (at period 2.09) is what you would expect from noise. For the period-24 series $g = 0.937$, meaning 94% of the variation is at one frequency, and $p \approx 10^{-140}$, so I reject. Rejection means the largest peak is too big to be white noise; it does not by itself prove a deterministic cycle, and if the series is autocorrelated (not white) the test should be done on prewhitened residuals, with an approximate p-value.
+The null hypothesis is that the series is Gaussian white noise, so its spectrum is flat and no single frequency stands out. $g$ is the share of the total that sits in the largest ordinate. For white noise $g = 0.043$ and $p = 0.53$, so I do not reject. The largest ordinate (at period 2.09) is what I would expect from noise. For the period-24 series $g = 0.937$, meaning 94% of the variation is at one frequency, and $p \approx 3 \times 10^{-140}$, so I reject. Rejection means the largest peak is too big to be white noise. It does not by itself prove a deterministic cycle, and if the series is autocorrelated (not white) the test should be done on prewhitened residuals, with an approximate p-value.
 
 ## Section 9: Preparing a series
 
@@ -369,7 +379,7 @@ ggplot(det, aes(freq, spec)) +
   labs(x = "Frequency", y = "Spectrum (log scale)")
 ```
 
-With only the mean removed, the trend puts huge power at the lowest frequencies and the spectrum slopes down from the left edge, partly drowning the 12-month peak. After removing the linear trend, the low-frequency power goes and the peak at $f = 1/12$ is clearly the main feature. Detrending (fitting and subtracting the trend) is the gentle fix; differencing would also remove it but changes the whole spectrum (Section 11). Tapering and padding are the other two defaults: tapering reduces leakage of a big peak into its neighbours, and padding only makes the frequency grid finer without adding information.
+With only the mean removed, the trend puts huge power at the lowest frequencies and the spectrum slopes down from the left edge, partly drowning the 12-month peak. After removing the linear trend, the low-frequency power goes and the peak at $f = 1/12$ is clearly the main feature. Detrending (fitting and subtracting the trend) is the gentle fix. Differencing would also remove it but changes the whole spectrum (Section 11). Tapering and padding are the other two defaults. Tapering reduces leakage of a big peak into its neighbours, and padding only makes the frequency grid finer without adding information.
 
 ## Section 10: Spectral signatures of familiar models
 
@@ -391,7 +401,7 @@ ggplot(theory, aes(freq, spec)) +
   labs(x = "Frequency", y = "f(frequency)")
 ```
 
-**Question:** Match each description to a process: (A) flat across frequency; (B) power concentrated near $f = 0$; (C) power concentrated near $f = 1/2$; (D) a broad interior peak.
+**Question:** Match each description to a process: (A) flat across frequency, (B) power concentrated near $f = 0$, (C) power concentrated near $f = 1/2$, (D) a broad interior peak.
 
 **Answer:**
 
@@ -430,7 +440,7 @@ ggplot(mult, aes(freq, gain)) +
 
 **Answer:**
 
-Differencing is a filter that multiplies the spectrum by $4\sin^2(\pi f)$. This is zero at $f = 0$, which is what removes a trend, but it is 4 at $f = 1/2$, so it boosts high-frequency noise. If the series did not need differencing, the result has a spectrum that is pushed down at low frequencies and up at high frequencies, which shows up in the time domain as a non-invertible MA term (an MA coefficient close to -1, as in the Part 1 notes). The seasonal difference is worse: it has zeros at every $k/12$, so it also wipes out genuine seasonal information. So over-differencing adds structure that was not in the data rather than just doing nothing.
+Differencing is a filter that multiplies the spectrum by $4\sin^2(\pi f)$. This is zero at $f = 0$, which is what removes a trend, but it is 4 at $f = 1/2$, so it boosts high-frequency noise. If the series did not need differencing, the result has a spectrum that is pushed down at low frequencies and up at high frequencies, which shows up in the time domain as a non-invertible MA term (an MA coefficient close to -1, as in the Part 1 notes). The seasonal difference is worse: it has zeros at every $k/12$, so it also wipes out real seasonal information. So over-differencing adds structure that was not in the data rather than just doing nothing.
 
 ## Section 12: The frequency domain versus the ACF
 
@@ -499,7 +509,7 @@ c(light_peak_period = 1 / sp_light$freq[which.max(sp_light$spec)],
 
 **Answer:**
 
-Yes. The peak near $f = 1/30$ is the biggest feature at both spans; with `spans = 5` its maximum falls on the neighbouring frequency (period 27.7) and with `spans = c(9, 7)` it is at period 30, because smoothing spreads the peak over its neighbours. Everything else stays at the noise level. Comparing two spans is the check from Step 4: a real feature survives a change in smoothing, while a peak that disappears when the span increases a little was noise.
+Yes. The peak near $f = 1/30$ is the biggest feature at both spans. With `spans = 5` its maximum falls on the neighbouring frequency (period 27.7) and with `spans = c(9, 7)` it is at period 30, because smoothing spreads the peak over its neighbours. Everything else stays at the noise level. Comparing two spans is the check from Step 4: a real feature survives a change in smoothing, while a peak that disappears when the span increases a little was noise.
 
 ### Task 3: formal test
 
@@ -511,7 +521,7 @@ fisher_g_test(y_ex)
 
 **Answer:**
 
-It gives a formal yes/no with a p-value that accounts for picking the biggest ordinate out of all of them. Here $g = 0.57$ (57% of the variation at one frequency) and $p \approx 8 \times 10^{-64}$, so I reject white noise. The plots show where the peak is; the test shows that a peak that size would not happen by chance from noise.
+It gives a formal yes/no with a p-value that accounts for picking the biggest ordinate out of all of them. Here $g = 0.57$ (57% of the variation at one frequency) and $p \approx 8 \times 10^{-64}$, so I reject white noise. The plots show where the peak is, and the test shows that a peak that size would not happen by chance from noise.
 
 ### Final interpretation
 
@@ -519,20 +529,9 @@ The series contains a cycle of 30 observations. The raw periodogram peaks at $f 
 
 ## Section 14: Simulated example: hourly electricity demand
 
-**The situation.** A power utility records demand every hour and wants to know which cycles drive the load, so it can plan when to run extra generation. This links to the Eskom data in Projects 3 and 4, but here I simulate the data so I know the truth. I simulate eight weeks of hourly demand (in GW) with:
+**The situation.** A power utility records demand every hour and wants to know which cycles drive the load, so it can plan when to run extra generation. This links to the Eskom data in Projects 3 and 4, but here I simulate the data so I know the truth. I simulate eight weeks of hourly demand (in GW) with a daily pattern that has a morning peak around 08:00 and a bigger evening peak around 19:00, a weekend dip with Saturday and Sunday about 2 GW lower, a slight upward trend, and AR(1) noise, so that the hours are correlated like real demand.
 
-- a daily pattern with a morning peak around 08:00 and a bigger evening peak around 19:00,
-- a weekend dip (Saturday and Sunday about 2 GW lower),
-- a slight upward trend,
-- AR(1) noise, so the hours are correlated like real demand.
-
-**What I expect before computing anything.**
-
-- The daily cycle is 24 hours, so a big peak at $f = 1/24 = 0.0417$.
-- The daily shape has two peaks, so it is not a sine wave. It needs harmonics, so I expect smaller peaks at $2/24$, $3/24$, ... These are part of the daily pattern, not new cycles.
-- The weekend dip repeats every 168 hours, so a peak at $f = 1/168 = 0.006$ near the left edge, again with harmonics at $k/168$.
-- The AR(1) noise gives a background that is higher at low frequencies (red noise), not flat.
-- The trend would pile power at the lowest frequencies, so I detrend first (the `spec.pgram()` default).
+**What I expect before computing anything.** The daily cycle is 24 hours, so I expect a big peak at $f = 1/24 = 0.0417$. The daily shape has two peaks, so it is not a sine wave and needs harmonics, which means smaller peaks at $2/24$, $3/24$ and so on. These are part of the daily pattern, not new cycles. The weekend dip repeats every 168 hours, so I expect a peak at $f = 1/168 = 0.006$ near the left edge, again with harmonics at $k/168$. The AR(1) noise gives a background that is higher at low frequencies (red noise), not flat. The trend would pile power at the lowest frequencies, so I detrend first, which is the `spec.pgram()` default.
 
 ```{r}
 set.seed(2026)
@@ -598,11 +597,15 @@ fisher_g_test(as.numeric(resid(lm(demand ~ hr))))
 
 **What the output shows.**
 
-- **Figure 10** shows the daily double peak (morning and evening) and the lower weekends, as built.
-- **Figure 11 (smoothed spectrum):** the spikes sit exactly on the red lines at $k/24$, so they all belong to the daily pattern. The biggest one is at $2/24$ (**12 hours**), not at $1/24$. This is the harmonics point from Step 2: the morning and evening peaks are about 11 hours apart, so the daily shape looks a lot like a 12-hour wave and most of its power goes to the second harmonic. I would still report this as **one daily cycle with two peaks**, not a separate 12-hour cycle. The background slopes down from left to right, which is the red-noise shape of the AR(1) errors.
-- **Figure 12 (zoom on low frequencies):** the tallest bar is at $1/168$ (**168 hours = one week**), with harmonics at $2/168$ (84 h), $4/168$ (42 h) and $5/168$ (33.6 h). These come from the weekend dip, which is a block shape, not a sine wave. The daily fundamental is at $1/24$ (red line).
-- **The table** lists the biggest ordinates: 12 h, 168 h, 84 h, 24 h, 6 h, 8 h, 33.6 h and 42 h. Every one is either $24/k$ or $168/k$, so all the structure comes from just two cycles: daily and weekly.
-- **Fisher's test** rejects white noise strongly ($g = 0.43$, $p \approx 10^{-161}$), with the largest ordinate at 12 hours. Because the noise is AR(1) and not white, the p-value is only approximate, but the peak is so large that the conclusion does not change.
+Figure 10 shows the daily double peak (morning and evening) and the lower weekends, as built.
+
+In Figure 11, the smoothed spectrum, the spikes sit exactly on the red lines at $k/24$, so they all belong to the daily pattern. The biggest one is at $2/24$ (**12 hours**), not at $1/24$. This is the harmonics point from Step 2: the morning and evening peaks are about 11 hours apart, so the daily shape looks a lot like a 12-hour wave and most of its power goes to the second harmonic. I would still report this as **one daily cycle with two peaks**, not a separate 12-hour cycle. The background slopes down from left to right, which is the red-noise shape of the AR(1) errors.
+
+In Figure 12, the zoom on the low frequencies, the tallest bar is at $1/168$ (**168 hours = one week**), with harmonics at $2/168$ (84 h), $4/168$ (42 h) and $5/168$ (33.6 h). These come from the weekend dip, which is a block shape, not a sine wave. The daily fundamental is at $1/24$ (red line).
+
+The table lists the biggest ordinates: 12 h, 168 h, 84 h, 24 h, 6 h, 8 h, 33.6 h and 42 h. Every one is either $24/k$ or $168/k$, so all the structure comes from just two cycles: daily and weekly.
+
+Fisher's test rejects white noise strongly ($g = 0.43$, $p \approx 8 \times 10^{-161}$), with the largest ordinate at 12 hours. Because the noise is AR(1) and not white, the p-value is only approximate, but the peak is so large that the conclusion does not change.
 
 **So what?** The utility should plan around a daily cycle with two peaks (the evening one bigger) and a weekly cycle where weekends are lower. A forecasting model needs both, for example Fourier terms at $k/24$ and $k/168$ or weekday dummies, which is what Project 3's regression did with real Eskom data. The spectrum also shows why one sine wave per cycle would not be enough: both patterns need several harmonics.
 

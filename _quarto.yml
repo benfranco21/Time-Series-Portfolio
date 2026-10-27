@@ -31,7 +31,7 @@ website:
           - text: "ARCH/GARCH"
             href: section-1/arch-garch.qmd
           - text: "Spectral"
-            href: section-1/spectral.qmd
+            href: section-1/Spectral_Analysis.qmd
       - text: "Section 2"
         menu:
           - text: "Overview"
@@ -42,6 +42,8 @@ website:
             href: section-2/state-space.qmd
       - text: "Reflective Commentary"
         href: reflective-commentary.qmd
+      - text: "References"
+        href: references.qmd
 
 format:
   html:

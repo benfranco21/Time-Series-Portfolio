@@ -2,9 +2,15 @@
 title: "Section 2"
 ---
 
-This section covers the Section 2 tutorials.
+Section 2 of the course covered exponential smoothing, time series regression, state space models and the Kalman filter, and hidden Markov models. The two substantial projects for this section are [Project 3](../projects/project-03-eskom-demand/project-03.qmd), exponential smoothing against time series regression for South African daily peak electricity demand, and [Project 4](../projects/project-04-state-space/project-04.qmd), a state space model with my own Kalman filter on the same data. The pages below are worked tutorials from Birgit's tutorial sheets.
+
+**State space models tutorial.** Question 1 of the state space models and Kalman filter tutorial. I simulate a state space model whose $G_t$ and $F_t$ change at every step, write my own Kalman filter, estimate $V$ and $W$ by maximum likelihood, check the fit against the true state and forecast five steps ahead. Because the data are simulated, I can check every step against the truth, which Project 4 cannot do with real data.
+
+**Hidden Markov models.** Questions 3, 7 and 2 of the hidden Markov models tutorial. I compute the likelihood of a short Poisson HMM series by listing every path and with the forward algorithm, write a likelihood function for a two-state Bernoulli HMM, and code the Viterbi algorithm to decode the most likely state sequence.
+
+**An idea beyond the lectures.** In Project 3 I compared my models with Eskom's own forecast of the same demand, so the models are judged against a real forecast and not only against simple benchmarks. I also scored the prediction intervals with the CRPS, which is not in the course notes.
 
 ## Contents
 
-- [Hidden Markov Models](hmm.qmd)
 - [State Space Models Tutorial](state-space.qmd)
+- [Hidden Markov Models](hmm.qmd)
