@@ -3,20 +3,20 @@ title: "Project 1 Summary"
 format: html
 ---
 
-**Title:**
+**Title:** Financial Forecasting: AR, MA and ARIMA Models on AAPL
 
-**Section and topic:**
+**Section and topic:** Section 1, AR, MA and ARIMA models
 
-**Type of project:**
+**Type of project:** Exploration, a model comparison on real-world data
 
-**Question or aim:**
+**Question or aim:** To test whether AR, MA or ARMA terms improve on the simplest model for AAPL daily prices and log returns, whether it is better to forecast the price directly or through the returns, and how forecast accuracy changes between 1, 5 and 20 trading days ahead.
 
-**Data used (and source):**
+**Data used (and source):** AAPL daily closing prices from [data source], 3 January 2017 to 31 December 2019 (754 trading days). The first 497 days are the training set and the last 257 days are the test set.
 
-**Methods used:**
+**Methods used:** ADF and KPSS tests for stationarity, ACF and PACF for identifying candidate models, ARIMA models fitted with arima() and compared with AICc, Ljung-Box tests on the residuals and the squared residuals, rolling-origin cross-validation on the training set (RMSE, MAE and MASE), a test-set comparison with the returns forecast turned into an implied price, and 95% prediction intervals for a 20-day forecast.
 
-**Key findings:**
+**Key findings:** AR and MA terms did not help in either branch. AICc chose ARIMA(0,0,0) for the returns and ARIMA(0,1,0) for the price, and in cross-validation the one-term models were within 1% of them. On the test set the returns-based forecast had a lower RMSE than the price forecast at every horizon, 0.9% lower at 1 day, 5.0% at 5 days and 12.7% at 20 days. The gap comes from the drift, since the returns model includes the mean return while ARIMA(0,1,0) has no constant. The squared residuals were strongly autocorrelated (p = 5.2e-12), so the variance changes over time, which an ARIMA model cannot represent.
 
-**What I would do differently:**
+**What I would do differently:** I would fit ARIMA(0,1,0) with a drift term, so that the two branches can be compared with the same drift. I would check the prediction intervals over every test origin instead of one 20-day path. I would also check that both branches are scored on the same days before writing up the results, since I found and fixed a one-day offset in my evaluation function late in the project.
 
 **Link to detailed analysis:** [project-01.qmd](project-01.qmd)

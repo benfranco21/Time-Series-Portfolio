@@ -30,8 +30,8 @@ final_eval_returns_as_price <- function(returns, price, order, horizons, test_st
             fit <- tryCatch(arima(returns[1:origin], order = order), error = function(e) NULL)
             if (is.null(fit)) {errors[i] <- NA; next}
             fc <- tryCatch(predict(fit, n.ahead = h)$pred, error = function(e) rep(NA,h))
-            implied_price <- price[origin + 1] * exp(sum(fc))
-            errors[i] <- price[origin + h + 1] - implied_price
+            implied_price <- price[origin] * exp(sum(fc))
+            errors[i] <- price[origin + h] - implied_price
         }
         out <- rbind(out, data.frame(
             Horizon = h,

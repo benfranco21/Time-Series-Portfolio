@@ -3,20 +3,20 @@ title: "Project 2 Summary"
 format: html
 ---
 
-**Title:**
+**Title:** GARCH Volatility Modelling: Extending the AAPL Forecasting Analysis
 
-**Section and topic:**
+**Section and topic:** Section 1, conditional variance models, ARCH and GARCH
 
-**Type of project:**
+**Type of project:** Exploration, a model comparison on real-world data
 
-**Question or aim:**
+**Question or aim:** To test whether a GARCH(1,1) model removes the volatility clustering left in the residuals of the ARIMA(0,0,0) model from Project 1, and whether it gives better 95% prediction intervals for AAPL daily log returns at 1, 5 and 20 trading days ahead.
 
-**Data used (and source):**
+**Data used (and source):** AAPL daily closing prices from [data source], 3 January 2017 to 31 December 2019, with the same split as Project 1. The training set has 496 returns, up to 21 December 2018, and the test set has 257 trading days.
 
-**Methods used:**
+**Methods used:** Joint estimation of four ARMA mean equations with a GARCH(1,1) variance, compared with AIC and BIC. Engle's ARCH LM test and the Ljung-Box test on the squared innovations of a constant-mean model. ARCH(1) and GARCH(1,1) models with Student-t innovations, fitted by maximum likelihood with rugarch. Diagnostics on the standardised residuals, weighted Ljung-Box, ARCH LM, Nyblom stability and sign bias tests. Out-of-sample coverage of 95% prediction intervals against ARIMA(0,0,0) at 1, 5 and 20 days, refitting at every test origin, overall and split by forecast volatility.
 
-**Key findings:**
+**Key findings:** A constant mean was chosen again under joint estimation. Both tests confirmed volatility clustering in the constant-mean residuals, Ljung-Box p = 5.2e-12. GARCH(1,1) removed it in sample, with the Ljung-Box statistic on the squared standardised residuals falling from 74.81 to 3.29, p = 0.97, while ARCH(1) failed the ARCH LM test at lag 6. Out of sample at one day the two models had almost the same overall coverage, 94.94% for GARCH against 94.16% for ARIMA, but ARIMA covered 97.67% of calm days and 90.63% of volatile days, while GARCH stayed closer to 95% in both, 96.12% and 93.75%. At twenty days the GARCH intervals were too wide, 97.48% coverage, because the forecasts move towards an implied long-run standard deviation of 0.0352, more than twice the training value, which comes from a persistence of 0.9865. The Nyblom test found the parameters were not stable over the training window.
 
-**What I would do differently:**
+**What I would do differently:** I would refit the model on the calm and volatile parts of the training set, to check whether the high persistence comes from a break around the late-2018 sell-off. I would use a longer test period, so that the coverage results for calm and volatile days rest on more days that are not all from the same few episodes. I would also fit an asymmetric model such as GJR-GARCH, to check the sign bias result directly.
 
 **Link to detailed analysis:** [project-02.qmd](project-02.qmd)

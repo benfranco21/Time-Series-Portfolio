@@ -1,0 +1,21 @@
+---
+title: "Lecture: Exponential smoothing"
+---
+
+This section was covered in Birgit's lectures, from her Chapter 1 notes and slides. It started with simple exponential smoothing and built up to Holt-Winters and ETS, and it was the method I then used in Project 3.
+
+**How simple exponential smoothing works.** I learnt that in a simple way you can predict the next observation by weighting the previous observation, then the one before it, and so on, with the weights getting smaller exponentially the further back you go. The weighted sum can be rewritten as
+
+$$\ell_t = \alpha y_t + (1 - \alpha)\ell_{t-1}$$
+
+so it works a bit like a Markov chain. The level from the previous step already holds all the information from the observations before it, so only one number has to be carried forward. For simple exponential smoothing the one step forecast is just the current level, so the fitted values are the level shifted forward by one time period.
+
+**What $\alpha$ means.** The smoothing parameter $\alpha$ decides how much weight goes on the latest observation. Close to 1, the forecast mostly follows the last value, and at exactly 1 it becomes the naive forecast. Close to 0, it is a long, smooth average of the past.
+
+**Building it up.** Birgit built the method up one part at a time. Holt's method adds a trend, which is the change in the level, with its own smoothing parameter $\beta$. Holt-Winters then adds a seasonal term with $\gamma$, so the forecast is level plus trend plus season. The seasonal part can be additive or multiplicative. The question to ask is whether the seasonal effect grows by a fixed amount each year or by a percentage, and if the residuals fan out as the fitted values get bigger, it should have been multiplicative.
+
+**ETS turns it into a model.** On its own, exponential smoothing is a set of updating equations and not a statistical model. ETS adds an error term, which makes it a state space model. This means it gives prediction intervals as well as point forecasts, and `ets()` can choose the best combination of error, trend and season.
+
+**Link to Project 3.** This was the model I first wanted to fit to a real data set with trend and seasonality, to see how it would perform. So I used it as the starting point to build out the idea which led to Project 3.
+
+**Takeaway:** exponential smoothing is a weighted average of the past that only needs the last level to update, and $\alpha$ controls how fast it reacts. Adding trend and season builds it up to Holt-Winters, and adding an error term turns it into a proper model with ETS, which links straight into the state space section that came next.

@@ -1,31 +1,23 @@
 ---
-title: "Lecture: State Space Models"
+title: "Lecture: State space models"
 ---
 
-## Journal Entry: Lecture — State Space Models
+In today's lecture Birgit introduced state space models, and this is the section I have enjoyed most so far.
 
-Today's lecture introduced state space models, and this was the section I have enjoyed most so far. The idea is simple: **observation = signal + noise**. There is an underlying state $\theta_t$ that we never see directly, and the data $y_t$ are noisy measurements of it. Conditional on the state, each observation depends only on $\theta_t$, and the state itself evolves as a Markov chain. The whole model is specified by two equations:
+**Observation equals signal plus noise.** The idea is that there is an underlying state $\theta_t$ that we never see directly, and the data $y_t$ are noisy measurements of it. Each observation depends only on the current state, and the state moves forward like a Markov chain, where the next state only depends on the one before it. The whole model is two equations:
 
-- **Observation equation:** $Y_t = F\theta_t + v_t, \quad v_t \sim N(0, V)$
-- **State equation:** $\theta_t = G\theta_{t-1} + w_t, \quad w_t \sim N(0, W)$
+$$Y_t = F\theta_t + v_t, \qquad v_t \sim N(0, V)$$
 
-Together with a normal prior on $\theta_0$, this is the dynamic linear model (linear, Gaussian state space model), and the Kalman filter is used to fit it.
+$$\theta_t = G\theta_{t-1} + w_t, \qquad w_t \sim N(0, W)$$
 
-**Building up three models.** What made the lecture click was that the three special cases were built up one step at a time, each adding one component to the last:
+The first is the observation equation and the second is the state equation. With a normal starting value for $\theta_0$ this is the dynamic linear model, and the Kalman filter is used to fit it.
 
-1. **Local level (random walk plus noise):** $Y_t = \mu_t + v_t$, with $\mu_t = \mu_{t-1} + w_t$. The state is just a level that drifts as a random walk, and the observations are noisy readings of it. We fitted this to the Nile data using `statespacer`, and it gave the smoothed level, filtered level and 1-step predictions.
-2. **Local linear trend:** here the level gets a slope $\beta_t$, which is itself a random walk: $\mu_t = \mu_{t-1} + \beta_{t-1} + e_t$ and $\beta_t = \beta_{t-1} + \gamma_t$. The state vector grows from one element to two (level and slope), so $G$ and $W$ change accordingly. This was the right structure for the global temperature series, where the trend keeps changing direction.
-3. **Basic structural model:** on top of the local linear trend, a seasonal component $s_t$ is added, with the constraint that the seasonal effects sum to zero over a year, $s_t = -\sum_{j=1}^{S-1} s_{t-j} + \delta_t$. We applied this to monthly Cape Town temperature and to UK gas consumption with `StructTS`.
+**Building up three models.** I found it interesting how we built up the three models. First the local level model, where the observation is just based on the state, and the state is a level that moves as a random walk, $\mu_t = \mu_{t-1} + w_t$. We fitted this to the Nile data with `statespacer`. Then we added a slope $\beta_t$ into the state, which is also a random walk, so the level can trend up or down and the trend itself can change. This is the local linear trend model, and it suited the global temperature series where the trend changes direction. Lastly we added seasonality, with seasonal effects that add up to zero over a year, which gives the basic structural model. We applied this to monthly Cape Town temperature and UK gas consumption with `StructTS`. Each new part is one more piece added to the state, and not a whole new model.
 
-Seeing it built this way made it clear that each new component is one more block in the state vector, not a whole new model. It also links back to the structural time series idea from the start of the lecture, $y_t = \mu_t + \gamma_t + \epsilon_t$, where the trend, seasonal and irregular parts are each modelled as unobserved stochastic processes.
+**Why I liked it.** I like how diverse this technique is, as it can be applied to many different models. ARIMA and exponential smoothing can both be written in state space form and fitted the same way. It handles missing values without any extra work, it does not need the series to be stationary, and explanatory variables can be added to the observation equation. I also found it easier to think about adding a trend or a seasonal part than to work out AR and MA orders from the ACF and PACF.
 
-**Why I found it interesting.** The main thing I enjoyed is how flexible the framework is:
+**What to watch out for.** Birgit also pointed out the downsides. The variances $V$, $W$ and the component variances can be hard to tell apart from each other, and maximising the likelihood is harder than the software makes it look, so good starting values matter. This is why the `initial` argument is needed in the `statespacer` calls.
 
-- Many models we have already covered (ARIMA and exponential smoothing/ETS) can be written in state space form and fitted with the same machinery.
-- It handles **missing values** naturally, and stationarity is not required.
-- Explanatory variables can be added straightforwardly (to the observation equation), and time-varying coefficients are possible.
-- Adding structural components is easier to reason about than working out AR and MA orders from ACF/PACF plots.
-- It extends to multivariate series, and to nonlinear or non-Gaussian cases (extended Kalman filter, particle filters, hidden Markov models).
+**Link to Project 4.** This was the model I most wanted to try on real data, to see how a level that is allowed to change over time would do on a series with trend and seasonality. So I used it as the starting point to build Project 4, where I wanted to code the Kalman filter myself.
 
-**Difficulties to keep in mind.** The lecture was also honest about the downsides. The variances ($V$, $W$ and the component variances) can be hard to separate from each other (identifiability), and maximising the likelihood is harder than the software makes it look, so good starting values matter. This is why the `initial` argument appears in the `statespacer` calls.
-
+**Takeaway:** a state space model splits a series into a hidden state and noise, and more structure is added by adding pieces to the state. Because so many models fit into this one framework, it ties together a lot of what we have done so far in the course.

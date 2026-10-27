@@ -1,0 +1,19 @@
+---
+title: "Time series regression"
+---
+
+I worked through this section from Birgit's Chapter 2 notes and slides while setting up Project 3. The idea is to use a normal regression model to explain a time series with predictor variables, and then deal with the fact that the errors in time series data are usually correlated.
+
+**Useful predictors.** The notes list the kinds of predictors that are most useful for time series. A trend can be added with a time index $t = 1, \dots, T$, or with quadratic terms or splines if the trend is curved. Dummy variables can capture things like weekends, public holidays, seasons or one off events. A smooth seasonal pattern can also be modelled with sine and cosine terms, which uses fewer parameters than a dummy for every season. Lagged predictors are possible too, but lags of the same variable are highly correlated with each other, which causes multicollinearity.
+
+**Why the errors matter.** A regression assumes the errors are independent, but in time series data they usually are not, since today's error tends to be like yesterday's. The coefficient estimates are still unbiased, but the OLS standard errors can be very wrong, so the tests and intervals cannot be trusted. Adding a lagged response as a predictor makes it worse, because then the coefficients become biased as well.
+
+**Regression with ARMA errors.** The fix is to keep the regression part and let the errors follow an ARMA process. For AR(1) errors:
+
+$$y_t = \beta x_t + e_t, \qquad e_t = \phi e_{t-1} + w_t$$
+
+This can be fitted with generalised least squares, using `gls()` from `nlme` with `correlation = corAR1()`. The way I understand feasible GLS is that you fit OLS first, estimate the correlation of the errors from its residuals, refit using that correlation, and repeat until the estimates settle. So the regression explains what it can with the predictors, and the AR part picks up the correlation that is left over.
+
+**Link to Project 3.** After exponential smoothing, regression was the second approach I wanted to try on a real data set with trend and seasonality, because it lets me put the calendar effects in directly as predictors. So I used it as the other model to compare against exponential smoothing in Project 3, first with trend and calendar terms only, and then with AR(1) errors added.
+
+**Takeaway:** a regression model is easy to read, since each coefficient says what a predictor adds, but with time series data the errors have to be checked for autocorrelation. If they are correlated, adding ARMA errors keeps the regression and fixes the standard errors, which is what makes it usable for time series.

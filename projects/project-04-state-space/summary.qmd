@@ -9,14 +9,14 @@ format: html
 
 **Type of project:** Implementation
 
-**Question or aim:**
+**Question or aim:** To combine the two approaches from Project 3 in one state space model, with a level that moves every day like the ETS level and the Project 3 calendar terms as regressors, using a Kalman filter that I coded myself. The project asks whether this model forecasts South African daily peak demand more accurately than the Project 3 models and Eskom's own forecast, how much the level moves from day to day and how the Kalman gain compares with the ETS smoothing parameter, and whether the one-step errors are white noise and the 95% prediction intervals the right width.
 
-**Data used (and source):**
+**Data used (and source):** The daily peak of the hourly RSA Contracted Demand in the Eskom Data Portal file ESK19847, from 1 April 2022 to 27 September 2026 (1641 days), with the same 1276 training days and 365-day test year as Project 3. The Project 3 test-year forecasts were saved and loaded, so every model is scored on the same days.
 
-**Methods used:**
+**Methods used:** A dynamic linear model with 28 states, a random-walk level and 27 fixed coefficients for weekday, holiday, Easter and year-end indicators and yearly Fourier terms (K = 9). A Kalman filter, log-likelihood and Kalman smoother coded by hand, based on the KF() function in the course notes, and checked on a simulated local level model and against dlmFilter. $V$ and $W$ estimated by maximum likelihood with nlm() on the log scale from three sets of starting values. Diagnostics on the standardised one-step errors (ACF, Ljung-Box test, histogram). One-day and seven-day forecasts over the test year with $V$ and $W$ fixed, scored with the RMSE, MAE, MAPE, 95% coverage and CRPS against the Project 3 models, the naive and seasonal naive forecasts and Eskom.
 
-**Key findings:**
+**Key findings:** The state space model was the most accurate model at both horizons. One day ahead its RMSE was 542.16 MW, against 599.88 MW for ETS(A,A,A), 606.36 MW for the regression with AR(1) errors and 622.80 MW for Eskom. Seven days ahead it was 904.79 MW, against 1056.04 MW for ETS, 1058.72 MW for the seasonal naive forecast and 1236.37 MW for the regression with AR(1) errors. I have not tested whether these gaps are significant. The level variance was 3.54 times the observation variance, which gives a Kalman gain on the level of 0.81, close to the ETS smoothing parameter of 0.91. The one-step errors are not white noise ($X^2 = 171.25$ on 12 degrees of freedom), with a weekly pattern left at lags 7, 14, 21 and 28 and heavier tails than the normal. The 95% intervals had the lowest CRPS at both horizons, but covered 93.2% of the test days one day ahead and 98.9% seven days ahead.
 
-**What I would do differently:**
+**What I would do differently:** I would let the weekday effects change slowly through the year and add an indicator for the day before a public holiday, since both are aimed at the structure left in the errors. I would also use more than one test year and test whether the gaps between the models are statistically significant. Finally, I would check my filter against dlm on the full 28-state model, and not only on a model with one state.
 
 **Link to detailed analysis:** [project-04.qmd](project-04.qmd)

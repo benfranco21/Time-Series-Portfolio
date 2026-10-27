@@ -3,20 +3,20 @@ title: "Project 3 Summary"
 format: html
 ---
 
-**Title:**
+**Title:** Forecasting South African Daily Peak Electricity Demand: Exponential Smoothing vs Time Series Regression
 
-**Section and topic:**
+**Section and topic:** Section 2, exponential smoothing and time series regression
 
-**Type of project:**
+**Type of project:** Exploration, a model comparison on real-world data
 
-**Question or aim:**
+**Question or aim:** To compare exponential smoothing with time series regression on South African daily peak electricity demand, asking which approach better captures the weekly and yearly cycles, whether either can match or do better than Eskom's own forecast, and how reliable the 95% prediction intervals of each approach are one day and seven days ahead.
 
-**Data used (and source):**
+**Data used (and source):** The daily peak of the hourly RSA Contracted Demand in the Eskom Data Portal file ESK19847, from 1 April 2022 to 27 September 2026 (1641 days, no gaps), with Eskom's own forecast taken as a daily maximum in the same way. The first 1276 days are the training set and the last 365 days are the test year.
 
-**Methods used:**
+**Methods used:** Simple exponential smoothing coded by hand and fitted with nlm(), and six ETS models with a weekly season, chosen by AICc. A time series regression with a linear trend, weekday indicators, yearly Fourier terms (K = 9) and indicators for holidays, Easter and the year-end break, fitted by OLS and then with AR(1) errors. Forecasts one and seven days ahead over the test year with the training parameters, scored with the RMSE, MAE, MAPE, 95% coverage and CRPS against the naive, seasonal naive and Eskom forecasts.
 
-**Key findings:**
+**Key findings:** One day ahead, ETS(A,A,A) had an RMSE of 599.88 MW and the regression with AR(1) errors 606.36 MW, against 622.80 MW for Eskom and 959.27 MW for the naive forecast. The differences from Eskom are small and untested, so both models are about as good as Eskom's forecast. The plain regression got the calendar right but forecast 1122.71 MW too high on average, because its linear trend could not follow the fall of 1696 MW between the 2025 and 2026 winters. The AR(1) errors cut this to 339.88 MW one day ahead but not seven days ahead, where the regression with AR(1) errors had an RMSE of 1236.37 MW and ETS(A,A,A) was no better than the seasonal naive forecast (1056.04 against 1058.72 MW). The 95% intervals covered 92.60% and 87.1% of the test days one day ahead, but 98.4% and 66.6% seven days ahead, so neither set is reliable at that horizon.
 
-**What I would do differently:**
+**What I would do differently:** I would fit a state space model with a level that moves every day and the same calendar regressors, which is the starting point for Project 4. I would add weather data, to explain the high days the calendar cannot. I would also use more than one test year, or a rolling origin over several years, and test whether the differences from Eskom are statistically significant.
 
 **Link to detailed analysis:** [project-03.qmd](project-03.qmd)

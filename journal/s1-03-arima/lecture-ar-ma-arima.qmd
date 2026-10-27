@@ -1,14 +1,12 @@
 ---
-title: "Lecture: AR, MA, ACF/PACF Identification, and ARIMA (Slides 80–125)"
+title: "Lecture: AR, MA, ACF/PACF and ARIMA (slides 80 to 125)"
 ---
 
-## Journal Entry: Lecture — AR, MA, ACF/PACF Identification, and ARIMA (Slides 80–125)
+Today's lecture covered slides 80 to 125. We started with AR and MA models on their own, then moved on to how to pick between them using the ACF and PACF, and finished with how they combine into ARIMA.
 
-Today's lecture covered slides 80 to 125, moving from the individual building blocks of MA and AR models through to how they combine into ARIMA.
+**What AR and MA are built on.** The main difference between the two is what each model is built on. An AR(p) model is built on lagged values of the series itself, whereas an MA(q) model is built on lagged errors. Before this lecture I saw both as just "using the past", without separating that one uses the actual observed values and the other uses the shocks the model could not explain.
 
-**AR vs MA — what each model is built on.** The core distinction is *what* each model regresses on. An AR(p) model expresses the current value as a function of its own **past values** (lagged $y$), while an MA(q) model expresses the current value as a function of **past forecast errors** (lagged $\varepsilon$), not lagged data directly. This is a distinction I hadn't fully separated in my head before — it's easy to see both as "using past information" without registering that one uses realised observations and the other uses the shocks that couldn't be explained by the model.
-
-**Identifying which model fits — ACF and PACF.** The lecture then covered how to read the ACF and PACF plots to identify which model form is appropriate, summarised in the identification table:
+**Picking the model with the ACF and PACF.** We then looked at how to use the ACF and PACF plots to decide which model fits. The slides summarise this in a table:
 
 | Process | ACF | PACF |
 |---|---|---|
@@ -17,13 +15,18 @@ Today's lecture covered slides 80 to 125, moving from the individual building bl
 | MA(q) | Cuts off after lag q | Decays gradually |
 | ARMA(p, q) | Decays gradually | Decays gradually |
 
-The intuition behind the AR case is that the PACF strips out the indirect correlation carried through intervening lags — for an AR(1) process, $y_t$ only depends directly on $y_{t-1}$, so the PACF has a sharp cutoff after lag 1 even though the ACF decays gradually (since $y_t$ is still indirectly related to $y_{t-2}, y_{t-3}, \dots$ through the chain of dependence). MA behaves as the mirror image of this, because an MA(q) process only has direct dependence for q lags, giving a sharp ACF cutoff, while the PACF decays gradually. As I noted, picking an AR model requires the ACF decay + PACF spike pattern to line up, and MA requires the reverse — the two diagnostics have to agree with each other, not just individually look like one shape or another. The lecture was clear that this table is a guide rather than a hard rule, since sample ACFs are noisy and the final model choice also depends on information criteria and residual diagnostics.
+For an AR(1), $y_t$ only depends directly on $y_{t-1}$. The PACF removes the indirect correlation that passes through the lags in between, so it cuts off after lag 1. The ACF still decays slowly, because $y_t$ is linked to $y_{t-2}$ and $y_{t-3}$ through that chain. MA is the other way round, since an MA(q) only depends directly on the last q errors, so the ACF cuts off and the PACF decays. To pick an AR model, the ACF decay and the PACF spike have to line up, and for an MA model it is the opposite. The lecture made it clear the table is a guide and not a hard rule, because sample ACFs are noisy, so the final choice also uses information criteria and residual diagnostics.
 
-**Combining into ARMA and then ARIMA.** Many real series show both patterns simultaneously — persistence from past values *and* short-lived shocks — which is what ARMA is built to capture, combining the AR and MA structures into one model. The lecture noted that an ARMA process doesn't show either "pure" signature on its ACF/PACF (both decay gradually), so identifying an ARMA model needs the two correlograms together with AIC/BIC and diagnostic checks, not just a visual read.
+**From ARMA to ARIMA.** Many real series show both patterns at once, which is what ARMA is for, as it combines the AR and MA parts into one model. An ARMA process has both the ACF and PACF decaying, so you cannot pick its order from the plots alone and need AIC or BIC and the diagnostics as well.
 
-ARIMA then extends ARMA by adding **differencing** to handle non-stationary series. The order $d$ specifies how many times the series is differenced before the ARMA(p,q) structure is fitted, written as $\phi(L)(1-L)^d y_t = c + \theta(L)\varepsilon_t$. The effect of differencing is to remove trend: for a series with a deterministic linear trend, one difference leaves just a constant plus noise, and for a random walk, one difference leaves pure white noise. This matches what I understood from the lecture — differencing is the mechanism that lets ARIMA handle series ARMA alone couldn't, by removing the trend first so the remaining series is stationary enough for the AR/MA machinery to apply.
+ARIMA then adds differencing to ARMA so it can handle a series that is not stationary. The order $d$ is the number of times the series is differenced before the ARMA(p, q) part is fitted:
 
-**What I want to keep in mind:** it's tempting to over-difference in search of stationarity, but the notes flag that this is detectable — an over-differenced series shows inflated variance and a first-lag autocorrelation near -0.5, so if differencing makes the variance go *up* rather than down, that's a sign of having gone one step too far.
+$$\phi(L)(1-L)^d y_t = c + \theta(L)\varepsilon_t$$
 
-**Takeaway:** today connected the ACF/PACF diagnostics directly to model choice for the first time — rather than treating them as abstract plots, they're now a genuine identification tool, and ARIMA makes sense as "ARMA plus a pre-processing step for non-stationarity" rather than a separate model entirely.
+The result is the removal of the trend. For a series with a straight line trend, one difference leaves a constant plus noise, and for a random walk one difference leaves white noise. So ARIMA is ARMA with a differencing step first, which makes the series stationary before the AR and MA parts are fitted.
 
+**What I want to keep in mind.** It is easy to keep differencing to get stationarity, but the notes show you can tell when you have gone too far. An over-differenced series has a higher variance than before and a lag 1 autocorrelation close to -0.5. So if differencing makes the variance go up instead of down, it was one step too many.
+
+**Link to Project 1.** These were the first actual time series models we learnt, and I was curious to see how they would be fitted to real data and not just the examples in the slides. This is where the idea for my first project came from, where I fitted AR, MA and ARIMA models to AAPL prices and returns.
+
+**Takeaway:** this lecture was the first time the ACF and PACF became a tool for choosing a model and not just plots to look at. ARIMA also made more sense once I saw it as ARMA with a differencing step first, instead of a whole new model.

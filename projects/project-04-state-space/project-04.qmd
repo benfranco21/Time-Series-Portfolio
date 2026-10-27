@@ -18,13 +18,18 @@ source(here::here("projects", "project-04-state-space", "R", "kalman_functions.R
 
 ## Introduction
 
-Project 3 compared exponential smoothing and time series regression for forecasting South African daily peak demand. This project uses the same daily peak series, with the same training and test split, to fit a state space model with a Kalman filter that I will code by hand. The model has a level that can move from day to day, and weekday, holiday and yearly effects as regression terms.
+Project 3 compared exponential smoothing and time series regression for forecasting South African daily peak electricity demand, and each approach got part of the problem right. The regression knew the calendar, through its weekday, holiday, Easter, year-end and Fourier terms, but its level came from a fixed intercept and linear trend. When demand fell faster than that trend in the test year, its forecasts sat too high, so it had the calendar right and the level wrong. ETS(A,A,A) followed the level of demand almost day by day, but it had no holiday, Easter or yearly terms, so it only reacted to those days after they had happened.
+
+This project tries to combine the two. I use the same daily peak series, with the same training and test split, and fit a state space model with a level that can move from day to day, like the ETS level, and the Project 3 calendar terms as regressors. I code the Kalman filter, the log-likelihood and the smoother myself, and check the filter on simulated data and against the dlm package before I fit the model to the Eskom data.
 
 This project asks three questions.
 
-1. Can a state space model with a random-walk level forecast daily peak demand more accurately than the ETS and regression models from Project 3, at one day and at seven days ahead?
+1. Can a state space model with a random-walk level forecast daily peak demand more accurately than the ETS and regression models from Project 3 at one day and at seven days ahead, and more accurately than Eskom's own forecast at one day ahead?
 2. How much does the level move from day to day, and how does the Kalman gain compare with the ETS smoothing parameter?
 3. Are the one-step errors of the model white noise, and are the 95% prediction intervals the right width?
+
+I judge the models on the test year, using the RMSE, MAE and MAPE for the point forecasts and the 95% coverage and CRPS for the intervals, the same measures as in Project 3.
+
 
 ## Data and Set-up
 
@@ -57,9 +62,10 @@ dim(x_all)
 
 ```
 
-For this project I used the same daily peak series as in Project 3, which has 1641 days from 1 April 2022 to 27 September 2026. The first 1276 days, up to 27 September 2025, are the training data and the last 365 days are the test set. This is the same split as Project 3 in order to maintain an accurate comparison. I checked that my test values match the ones saved from that project, so the results can be compared directly.
+For this project I used the same daily peak series as in Project 3, which has 1641 days from 1 April 2022 to 27 September 2026. The first 1276 days, up to 27 September 2025, are the training data and the last 365 days are the test set. This is the same split as Project 3, so every model is scored on exactly the same days. I loaded the test-year table saved from Project 3 and checked that its actual values match my test set, which all.equal confirms, so the Project 3 scores can be compared directly with the ones in this project.
 
-The regressors are the ones from the best regression in Project 3, with K = 9 pairs of Fourier terms. This gives 27 columns: 6 weekday indicators, indicators for public holidays, Easter and the year-end break, and 18 Fourier terms for the yearly cycle. The data has 52 holiday days, 15 Easter days and 40 year-end days, the same used in project 3. I left out the intercept and the trend, because the level of the state space model takes their place.
+The regressors are the ones from the full regression in Project 3, which had the lowest AICc, with K = 9 pairs of Fourier terms. This gives 27 columns: 6 weekday indicators with Monday as the baseline, indicators for public holidays, Easter and the year-end break, and 18 Fourier terms for the yearly cycle. The holiday, Easter and year-end indicators cover 52, 15 and 40 days, the same days as in Project 3. I left out the intercept and the linear trend, because the level of the state space model takes their place.
+
 ## The State Space Model
 
 ```{r ss model}
@@ -83,13 +89,11 @@ build_W(100)[1:3, 1:3]
 ```
 
 
-I have written the model as $y_t = F_t\theta_t + v_t$ and $\theta_t = G\theta_{t-1} + w_t$, with $v_t \sim N(0, V)$ and $w_t \sim N(0, W)$. The state vector has 28 elements, which are the level $\mu_t$ and the 27 regression coefficients. Row $t$ of $F$ is $(1, x_t')$, so the fitted value is the level plus the calendar effects. $G$ is the identity matrix, so every state carries over from one day to the next.
+I wrote the model in the dynamic linear model form from the course notes (Chapter 3), $y_t = F_t\theta_t + v_t$ and $\theta_t = G\theta_{t-1} + w_t$, with $v_t \sim N(0, V)$ and $w_t \sim N(0, W)$. The state vector has 28 elements, which are the level $\mu_t$ and the 27 regression coefficients. Row $t$ of $F$ is $(1, x_t')$, so the mean of $y_t$ is the level plus the calendar effects for that day. In the notes $F$ stays the same over time, but here it changes from day to day, because the calendar regressors change. $G$ is the 28 by 28 identity matrix, so every state carries over from one day to the next.
 
-In the model only the level has a variance in $W$. The 27 coefficients have zero variance, so they stay fixed over time and learn as more days arrive into the model. The level is a random walk, which means it can move to a new value each day and never has to return to an earlier one. This is different from the Project 3 regression, where the level was fixed and the AR(1) errors pulled the forecast back towards it.
+Only the level has a variance in $W$, so $W$ is zero everywhere except the first entry on the diagonal. The 27 coefficients have zero variance, so they do not change over time. This is how the notes write a linear regression in state space form. The filter's estimates of the coefficients are still updated as each new day arrives, in the same way as the estimate of the level. The level is a random walk, which means it can move to a new value each day and never has to return to an earlier one. This is different from the Project 3 regression with AR(1) errors, where the level was fixed and the AR(1) errors pulled the forecast back towards it.
 
-I set the level to start at the first observation and all the coefficients at zero. The prior variance is 1e8 for every state, which is very large, so the first days of data decide the starting values and my guess does not.
-
-
+The notes start the filter from a normal prior on the states, $\theta_0 \sim N(m_0, C_0)$, and say that $m_0$ is usually set to zero and $C_0$ to a very large value. I followed this for the coefficients, which start at zero, but I started the level at the first observation, because a level of zero is far from every day in the data, which never falls below 21262 MW. The prior variance is $10^8$ for every state, a standard deviation of 10000 MW, so the prior carries very little information and the first days of data decide the estimates, not my starting guess.
 
 ## Kalman Filter Implementation
 
@@ -108,13 +112,15 @@ round(tail(kf0$m[,1], 3))
 all(kf0$Q[-(1:30)] > 0)
 ```
 
-I coded the Kalman filter from first principles to show my understadning, instead of using a built in function. The function is called kalman_filter. It takes the data $y$, the matrix $F$ with one row for each day, the matrix $G$, the two variances $V$ and $W$, and a starting mean $m_0$ and variance $C_0$. It then loops through the days, and each day it does three steps.
+I coded the Kalman filter myself instead of using a built-in function, to show that I understand each step. My function, kalman_filter, is based on the KF() function in the course notes, but written with matrices so that it can handle all 28 states at once. It takes the data $y$, the matrix $F$ with one row for each day, the matrix $G$, the variance matrix $W$, the observation variance $V$, the prior mean $m_0$ and variance $C_0$, and the number of days to leave out of the log-likelihood. It then loops through the days, and each day it does three steps.
 
-First it predicts the state. The mean $a_t = G m_{t-1}$ is where I expect the state to be today, and the variance $R_t = G C_{t-1} G' + W$ is larger than yesterday's $C_{t-1}$, because the level can move by $W$ in a day. Then it predicts the observation. The forecast is $f_t = F_t a_t$ and its variance is $Q_t = F_t R_t F_t' + V$, which adds the noise $V$ to the uncertainty about the state. When $y_t$ arrives, the filter works out the forecast error $e_t = y_t - f_t$ and the Kalman gain $K_t = R_t F_t' / Q_t$, which says how much of the error is passed on to the state. The state is then updated to $m_t = a_t + K_t e_t$, and its variance falls to $C_t = R_t - K_t F_t R_t$, because the new observation adds information. The function returns the forecasts $f_t$ and their variances $Q_t$, the errors $e_t$, the predicted states $a_t$ and $R_t$, the filtered states $m_t$ and $C_t$, and the log-likelihood. I use the forecasts and errors for the diagnostics and the test-year forecasts, the predicted and filtered states for the smoother, and the log-likelihood to estimate $V$ and $W$.
+First it predicts the state. The mean $a_t = G m_{t-1}$ is where I expect the state to be today, and the variance $R_t = G C_{t-1} G' + W$ is larger than yesterday's $C_{t-1}$, because the level variance $W$ is added each day. Then it predicts the observation. The forecast is $f_t = F_t a_t$ and its variance is $Q_t = F_t R_t F_t' + V$, which adds the noise $V$ to the uncertainty about the state. When $y_t$ arrives, the filter works out the forecast error $e_t = y_t - f_t$ and the Kalman gain $K_t = R_t F_t' / Q_t$, which says how much of the error is passed on to each state. The state is then updated to $m_t = a_t + K_t e_t$, and its variance falls to $C_t = R_t - K_t F_t R_t$, because the new observation adds information. These are the prediction and update equations in the notes.
 
-Each $y_t$ has a normal forecast distribution with mean $f_t$ and variance $Q_t$. The log-likelihood is therefore $-\frac{1}{2}\sum(\log Q_t + e_t^2/Q_t)$, up to a constant. I leave the first 30 days out of this sum, because the diffuse prior makes their forecast variances very large and not informative. If a day is missing, the filter skips the update, so $m_t = a_t$ and $C_t = R_t$.
+The function returns the forecasts $f_t$ and their variances $Q_t$, the errors $e_t$, the predicted states $a_t$ and $R_t$, the filtered states $m_t$ and $C_t$, and the log-likelihood. I use the forecasts and errors for the diagnostics and the one-day forecasts, the predicted and filtered states for the smoother, the filtered states for the seven-day forecasts, and the log-likelihood to estimate $V$ and $W$.
 
-As a first check I ran the filter on the training data with variances chosen by hand, $V = 100000$ and a level variance of 10000. The log-likelihood was finite at -8794. The first forecast variance was about 1.1 billion because of the diffuse prior, and the filtered level at the end of the training data was about 28,000 MW.
+Each $y_t$ has a normal forecast distribution with mean $f_t$ and variance $Q_t$. The log-likelihood is therefore $-\frac{1}{2}\sum(\log Q_t + e_t^2/Q_t)$, up to a constant, which is the form in the notes. I leave the first 30 days out of this sum, because the very large prior variance makes their forecast variances very large and not informative. If a day is missing, the filter skips the update, so $m_t = a_t$ and $C_t = R_t$ as in the notes, and that day is also left out of the log-likelihood.
+
+As a first check I ran the filter on the training data with variances chosen by hand, $V = 100000$ and a level variance of 10000. It ran without errors and gave a finite log-likelihood of -8794.24. The variance of the first forecast is 1100110000, which comes from the prior variance of $10^8$ on the states, and the next four are still between 59959489 and 198741941, far larger than $V$. This is why I leave the first 30 days out of the log-likelihood. After day 30 every forecast variance is positive, and the filtered level on the last three training days is 28136, 27940 and 27997 MW.
 
 ## Checking the Filter on Simulated Data
 
@@ -147,11 +153,11 @@ all.equal(kf_sim$m[,1], as.numeric(dlm_sim$m[-1]))
 
 ```
 
-Before fitting the model using the real data I decided to test the function on simulated data where I know the output it should be getting. I simulated 500 days of a local level model with $V = 4$ and $W = 1$. I then estimated both variances from the simulated series with nlm on the log scale. I chose to use three sets of starting values, because the likelihood can have more than one local maximum.
+Before fitting the model to the real data, I tested the function on simulated data where I know what the answer should be. I simulated 500 days of a local level model with $V = 4$ and $W = 1$, and estimated both variances from the simulated series by maximising the log-likelihood with nlm. I estimated the logs of the variances, so that the variances themselves can never be negative. The notes warn that this likelihood can have many local maxima and that it is important to try different starting values, so I used three sets of starting values.
 
-From the outputs you can see two of the three starting values gave $V = 3.59$ and $W = 1.09$, which are close to the true values of 4 and 1. The third stopped at $V$ close to 0 and $W = 8.49$, with a negative log-likelihood of 783.0 against 704.4 for the other two. I keep the fit with the lowest negative log-likelihood. This exact outcome is why i decided to use several starting values when training the model on real data. 
+Two of the three starting values gave $V = 3.59$ and $W = 1.09$, with a negative log-likelihood of 704.43. These are close to the true values of 4 and 1. They are not exactly equal, because they are estimated from one simulated series of 500 days. The third starting value stopped at $V$ close to 0 and $W = 8.49$, with a negative log-likelihood of 783.02, so it ended at a worse point on the likelihood and not at the maximum. I keep the fit with the lowest negative log-likelihood. This result is the reason I also used several starting values on the real data.
 
-To check my filter was working correctly, I also ran the filter from the dlm package with the true variances. The filtered levels from my function and from dlmFilter are the same, all.equal returns TRUE, so my filter does the same calculation as the package. This meant I was now happy to fit it to my real data set, and the outputs are trustworthy.
+To check that my filter does the right calculation, I also ran dlmFilter from the dlm package on the same simulated series, with the true variances and the same prior. The filtered levels from my function and from dlmFilter are the same, and all.equal returns TRUE. This check uses a model with only one state, so it tests the steps of the filter and not the 28-state version directly. Both use the same function, so I was happy to move on to fitting my function to the real data.
 
 ## Fitting the Model to Eskom Data
 
@@ -177,13 +183,13 @@ K_end <- kf_train$R[1,,n_train] %*% FF_train[n_train,]/kf_train$Q[n_train]
 K_end 
 ```
 
-To estimated $V$ and $W$ I fitted the function on the 1276 training days by maximising the log-likelihood with nlm, with both variances on the log scale. As mentioned above I used three different starting values. All three gave the same answer, with a negative log-likelihood of 8468.1, this allowed me to confidently state I had reached a global maximum.
+To estimate $V$ and $W$, I ran the filter on the 1276 training days and maximised the log-likelihood with nlm, with both variances on the log scale as in the simulation. I used three sets of starting values, with $V$ between 100000 and 500000 and $W$ between 100 and 10000. All three ended at the same point, with a negative log-likelihood of 8468.1, and nlm returned code 1 for each, which means it stopped because the gradient was close to zero. Three starting values cannot prove that this is the highest point of the likelihood, but reaching the same answer from three quite different places makes me confident it is not a poor local maximum like the one in the simulation.
 
-The observation variance is $V = 49317$, which is a standard deviation of 222 MW. The level variance is $W = 174698$, which is a standard deviation of 418 MW per day. The ratio $W/V$ is 3.54. This shows us that the level therefore changes more from day to day than the noise around it, so the filter treats most of a surprise as a real change in the level.
+The observation variance is $V = 49316.8$, with a standard deviation of 222.07 MW, and the level variance is $W = 174698.1$, with a standard deviation of 417.97 MW per day. So on a typical day the level moves by a few hundred MW, which answers the first part of question 2. The ratio $W/V$ is 3.54, so the level changes more from one day to the next than the noise around it.
 
-At the end of the training data the Kalman gain on the level is 0.81. The gain says how much of a forecast error is passed on to the level. If demand comes in 1,000 MW above the forecast, the level goes up by about 810 MW and stays there until the next error changes it. For the level this works out roughly as $m_t = 0.81\,y_t^* + 0.19\,m_{t-1}$, where $y_t^*$ is the peak with the calendar effects taken out. This is the form of simple exponential smoothing, and the gain is the smoothing parameter. In Project 3 the ETS model had alpha of 0.91, so the two models give a similar answer.
+At the end of the training data the Kalman gain on the level is 0.81. The gain says how much of a forecast error is passed on to the level, so the filter treats most of a surprise as a real change in the level. If demand comes in 1000 MW above the forecast, the level goes up by about 806 MW and stays there until the next error changes it. For the level this works out roughly as $m_t = 0.81\,y_t^* + 0.19\,m_{t-1}$, where $y_t^*$ is the peak with the estimated calendar effects taken out. This is the smoothing equation of simple exponential smoothing, $\ell_t = \alpha y_t + (1 - \alpha)\ell_{t-1}$, with the gain in the place of $\alpha$ (course notes, Chapter 1, Section 8). The notes also say that simple exponential smoothing is the best forecast for a random walk plus noise model, which is what the level part of my model is. In Project 3 the ETS(A,A,A) model had a smoothing parameter for the level of $\alpha = 0.91$, so the two models update the level in a similar way, which answers the second part of question 2.
 
-In both models the level depends mostly on the last day or two. With a gain of 0.81, the latest day gets a weight of 0.81, the day before gets 0.16 and the day before that gets 0.03, so about 96% of the weight sits on the last two days. The gain is high because $W$ is larger than $V$, with a ratio of 3.54. The filter therefore treats a change in demand as a real change in the level more than as noise. The benefit is that the forecasts follow shifts in demand quickly, which matters in a test year where demand falls. The cost is that a one-off unusual day also moves the level by most of its size, which may be part of the pattern in the diagnostics later.
+In both models the level depends mostly on the last day or two. With a gain of 0.81, the latest day gets a weight of about 0.81, the day before about 0.16 and the day before that about 0.03, so about 96% of the weight sits on the last two days. The gain is high because $W$ is larger than $V$. The benefit is that the forecasts follow shifts in demand quickly, which matters in a test year where demand falls. The cost is that a one-off unusual day also moves the level by most of its size, which may be part of the pattern in the diagnostics later.
 
 
 ## Filtered and Smoothed Level
@@ -201,14 +207,17 @@ ggplot(df_lvl, aes(date)) +
   geom_line(aes(y = smoothed, colour = "Smoothed")) +
   scale_colour_manual(values = c("Filtered" = "red", "Smoothed" = "blue")) +
   scale_fill_manual(values = c("95% interval (smoothed)" = "grey50")) +
-  labs(x = NULL, y = "Level (MW)", colour = NULL, fill = NULL) +
+   labs(x = NULL, y = "Level (MW)", title = "Filtered and smoothed level, training data",
+       colour = NULL, fill = NULL) +
   theme(legend.position = "bottom")
 
 ```
 
-The plot shows only the level $\mu_t$. The weekday, holiday and yearly effects sit in the other 27 states, so the level is what is left of demand once those are taken out, and this is why it does not have a seasonal pattern. The level falls from about 31000 MW in 2022 to about 28000 MW at the end of the training data, but the fall is not smooth. It stays between about 30500 MW and 31500 MW through 2022 and 2023, drops to about 28,000 MW around April 2024, recovers to about 29500 MW through 2025, and then drops again to about 28000 MW in the last weeks. This agrees with the fall in winter demand that I found in Project 3. From one day to the next the level moves by 1000 MW or more, which is what the large $W$ allows. These daily moves are shocks that the weekday, holiday and yearly terms cannot explain, such as weather or load shedding, but I do not have the data to check this.
+The plot shows only the level $\mu_t$, from day 31 of the training data onwards. The weekday, holiday, Easter, year-end and yearly effects sit in the other 27 states, so the level is what is left of demand once those are taken out, and this is why it has no weekly or yearly pattern. The smoothed level falls from about 31000 MW in 2022 to about 28000 MW at the end of the training data, but the fall is not smooth. It stays mostly between about 30000 MW and 31500 MW through 2022 and most of 2023, drifts down to about 30000 MW by early 2024, dips to about 28000 MW for a short time around April 2024, sits around 29500 MW from the middle of 2024 through most of 2025, and then drops again to about 28000 MW in the last weeks. This agrees with the fall in winter demand that I found in Project 3. On some days the level moves by 1000 MW or more, which the large $W$ allows. These moves are changes in demand that the calendar terms cannot explain. They may come from things such as the weather or load shedding, but I do not have the data to check this.
 
-The red line is the filtered level, which uses only the data up to each day, and the blue line is the smoothed level, which uses all of the training data. The two are close because the gain is 0.81, so each day carries a lot of information about the level and the days that come after it add little. The red line goes above or below the blue line at some of the spikes, for example in 2022 where it reaches about 33000 MW. At a spike the filter has not yet seen the days after it that show whether the jump was a one-day event. The red line also starts low at the very beginning, which is the diffuse prior settling, so I dropped the first 30 days. The grey band is the 95% interval for the smoothed level and it is about 2400 MW either side. This is much wider than the daily moves in the level, so I read the pattern over months, such as the fall, and not the individual days.
+The red line is the filtered level, which uses only the data up to each day, and the blue line is the smoothed level, which uses all of the training data. The two lines are often far apart in 2022 and early 2023, and very close from the middle of 2023 onwards. Early on the filter has seen only a few months of data, so its estimates of the 27 calendar coefficients are still poor and part of the calendar effects ends up in the filtered level. For example, the red line drops to about 28500 MW in January 2023 while the blue line stays near 31000 MW, because the filter had seen less than a full year and could not yet tell the year-end drop and the summer low apart from a fall in the level. The smoother uses the coefficient estimates from all of the training data on every day, so it does not have this problem. For the same reason the red line starts low, at about 27300 MW, even though the first 30 days are left out. Once the filter has seen a year or more of data the two lines almost match, because with a gain of 0.81 each day already carries most of the information about the level and the days after it add little.
+
+The grey band is the 95% interval for the smoothed level, and on average it is 2362.87 MW either side. It widens in the last weeks of the training data, because the smoother has no later days to use there. The band is much wider than the day to day moves in the level, so I read the pattern over months, such as the fall from late 2023 onwards, and not the individual days.
 
 ## State Space Diagnostics
 
@@ -217,21 +226,25 @@ The red line is the filtered level, which uses only the data up to each day, and
 std_e <- (kf_train$e/sqrt(kf_train$Q))[-(1:30)]
 
 c(mean = mean(std_e), sd = sd(std_e))
-ggAcf(std_e, lag.max = 30) + labs(title = NULL)
+ggAcf(std_e, lag.max = 30) + labs(title = "ACF of the standardised one-step errors, training data")
 Box.test(std_e, lag = 14, type = "Ljung-Box", fitdf = 2)
 
 ggplot(data.frame(z = std_e), aes(z)) +
   geom_histogram(aes(y = after_stat(density)), bins = 40, fill = "lightgreen", colour = "red") +
   stat_function(fun = dnorm, colour = "blue") +
-  labs(x = "Standardised one-step error", y = "Density")
+ labs(x = "Standardised one-step error", y = "Density",
+       title = "Standardised one-step errors with the N(0, 1) density")
 
+check <- train$date[-(1:30)][abs(std_e) > 3]
+check2 <- round(100 * mean(abs(std_e) > 1.96), 2)
 
 ```
-To check the model I looked at the standardised one-step errors, $e_t/\sqrt{Q_t}$, after dropping the first 30 days. I get that their mean is -0.0002 and their standard deviation is 0.994. If the variances are right these should be close to 0 and 1, so the model is well calibrated on average.
 
-From the ACF plot we can see that we do not have white noise. There are positive spikes outside the blue lines at lags 7, 14, 21 and 28, which is a weekly pattern the model has not fully captured. There are also negative spikes at lags 2 to 5, down to about -0.17 at lag 3. The Ljung-Box test with 14 lags gives $X^2 = 171.25$ on 12 degrees of freedom, and the p-value is below 2.2e-16, this tells me that I can reject white noise. The correlations are small, so I expect only a modest effect on forecast accuracy. I will check this on the test year further down.
+To check the model I looked at the standardised one-step errors, $e_t/\sqrt{Q_t}$, on the training data after dropping the first 30 days. If the model and the variances are right, these errors should be independent with mean 0 and standard deviation 1. Their mean is -0.00018 and their standard deviation is 0.99, so on average the forecast variances $Q_t$ are about the right size.
 
-When looking at the histogram you can see it is more peaked than the normal curve in the middle, and a few errors sit far out in the tails, at about -3.5 and +4. This tells us most days are forecast better than the normal curve suggests, and a few days, such as holidays, are forecast much worse. The normal prediction intervals may therefore be too narrow on those days.
+The ACF shows that the errors are not white noise. The largest spikes are positive and come at lags 7, 14, 21 and 28, all at about 0.12 to 0.15, which is a weekly pattern the model has not captured. One possible reason is that the weekday effects are fixed in the model, while in Project 3 the MSTL showed that the size of the weekly cycle changes through the year. There are also negative spikes at lags 2 to 5, down to about -0.18 at lag 3, and smaller ones outside the bounds at several other lags, such as 9 and 19. With 30 lags I would expect only one or two bars outside the bounds by chance, and many more than that are outside. The negative spikes at short lags may come from the high gain. A one-off unusual day moves the level by most of its size, so the next few forecasts start in the wrong place and the errors swing back. The Ljung-Box test with 14 lags, with 2 degrees of freedom taken off for the two estimated variances, gives $X^2 = 171.25$ on 12 degrees of freedom and a p-value below 2.2e-16, so I reject white noise. The correlations are all below about 0.18 in size, so the structure left in the errors is small, but it shows the model could still be improved.
+
+The histogram is more peaked than the normal curve in the middle, it has fewer errors than the curve between about 1 and 2 in size, and has a few errors far out in the tails, out to about -3.6 and 4.2. So most days are forecast better than the normal distribution suggests, and a few days are forecast much worse. Eleven errors are more than 3 in size. Seven of these days are a public holiday, a day in the year-end break, or the day before one of them, such as 1 and 2 January 2024, Women's Day on 9 August 2023 and the day before it in 2024. The holiday and year-end indicators therefore do not fully capture these days, and the day before a holiday is not in the model at all. I cannot link the other four days to the calendar. Over the training days 5.62% of the standardised errors are outside ±1.96, slightly more than the 5% that the normal distribution expects, so the 95% intervals are a little too narrow, mostly because of these few large errors.
 
 ## Test-Year Forecasts
 
@@ -260,20 +273,21 @@ res_ss <- data.frame(
 
 round(res_ss, 3)
 ```
-For the test year I kept $V$ and $W$ fixed at the training estimates, so to fit the model derived from the training data, and ran the filter over all 1641 days. The one-day forecast for each test day is $f_t$ with variance $Q_t$, which uses the data up to the day before. For the seven-day forecast I start from the state on day $t-7$. Because $G$ is the identity, the forecast mean is $F_t m_{t-7}$ and the state variance grows by $W$ each day, so the forecast variance is $F_t(C_{t-7} + 7W)F_t' + V$. I did not reestimate anything on the test data.
 
-From the output you can see the one-day forecasts has an RMSE of 542.2 MW, an MAE of 409.8 MW and 93.2% coverage of the 95% interval. The seven-day forecast has an RMSE of 904.8 MW, an MAE of 713.4 MW and 98.9% coverage. We will use these scores to compare the models to those from project 3.
+For the test year I kept $V$ and $W$ fixed at the training estimates and ran the filter over all 1641 days. Nothing is re-estimated on the test data, but the filter keeps updating the level and the coefficient estimates as each test day arrives, in the same way that ETS in Project 3 kept updating its states. The one-day forecast for each test day is $f_t$ with variance $Q_t$, which uses the data up to the day before. For the seven-day forecast I start from the filtered state on day $t-7$. With no new observations there is no update, so as the notes describe for forecasting, the mean stays the same and the state variance grows by $W$ each day. Because $G$ is the identity, the forecast mean is $F_t m_{t-7}$ and the forecast variance is $F_t(C_{t-7} + 7W)F_t' + V$. The 95% intervals are the forecast mean plus or minus 1.96 forecast standard deviations.
+
+The one-day forecasts have an RMSE of 542.16 MW and an MAE of 409.84 MW, and the 95% interval covers 93.2% of the test days. The seven-day forecasts have an RMSE of 904.79 MW and an MAE of 713.44 MW, and the interval covers 98.9% of the days. So the one-day intervals are slightly too narrow and the seven-day intervals are too wide. In the next section I compare these scores with the Project 3 models.
 
 ## Compare Models
 
 ```{r check bench}
-
+#| include: false
 names(bench)
 args(point_metrics)
 args(coverage)
 args(crps_norm)
-
 ```
+
 
 ```{r compare models}
 y  <- bench$actual
@@ -305,13 +319,14 @@ res7 <- rbind(
 round(res1, 3)
 round(res7, 3)
 ```
-Now to compare the models. From the outputs you can see at one day ahead the state space model is best on every measure. Its RMSE of 542.2 MW is 9.6% lower than ETS, 599.9, 10.6% lower than the regression with AR(1) errors, 606.4, and 12.9% lower than Eskom's own forecast, 622.8. Its CRPS is 299.0, against 326.6 for ETS and 348.9 for the regression.
 
-The 95% interval covers 93.2% of days for the state space model, 92.6% for ETS and 87.1% for the regression. The state space intervals are the closest to 95%, but they are still a little narrow, which fits the heavy tails in the histogram.
+The two tables put the state space scores next to the Project 3 scores on the same 365 test days. As in Project 3, the interval scores use each model's own 95% interval, and Eskom and the naive forecasts have no intervals, so their coverage and CRPS are blank. At one day ahead the state space model is best on every measure. Its RMSE of 542.16 MW is about 9.6% lower than ETS(A,A,A) at 599.88 MW, about 10.6% lower than the regression with AR(1) errors at 606.36 MW, and about 12.9% lower than Eskom's own forecast at 622.80 MW. Its MAE of 409.84 MW and MAPE of 1.55% are also the lowest. Its CRPS is 298.98, against 326.65 for ETS and 348.91 for the regression.
 
-Looking at the seven days ahead outputs, the state space model again has the lowest error. Its RMSE of 904.8 MW is 14.3% lower than ETS, 1056.0, and 14.5% lower than the lag 7 naive forecast ,1,058.7. The regression with AR(1) errors is much worse at 1,236.4 MW, because its forecast drifts back to the fixed level of the regression. The level in the state space model follows the data and does not drift back, which is the difference I expected from a random-walk level.
+The 95% interval covers 93.2% of days for the state space model, 92.6% for ETS and 87.1% for the regression. The state space intervals are the closest to 95%, but they are still a little too narrow. This fits the diagnostics on the training data, where the errors had heavy tails and 5.62% of them were outside ±1.96.
 
-The CRPS at seven days is 520.1 for the state space model, 602.1 for ETS and 799.9 for the regression. The 95% intervals cover 98.9% of days for the state space model and 98.4% for ETS, so both are too wide, while the regression covers only 66.6%. I think that the state space intervals are too wide because they treat the level as a pure random walk, so the variance grows by $W$ every day. The negative autocorrelation in the diagnostics suggests that part of each shock reverses, which would make the true uncertainty smaller. 
+Seven days ahead the state space model again has the lowest error on every point measure. Its RMSE of 904.79 MW is about 14.3% lower than ETS at 1056.04 MW, and about 14.5% lower than the seasonal naive forecast, which uses the value from seven days earlier, at 1058.72 MW. At this horizon ETS was hardly better than the seasonal naive forecast, so the state space model is the only one that clearly beats it. The regression with AR(1) errors is much worse at 1236.37 MW, because its forecast drifts back to the fixed level of the regression. The level in the state space model follows the data and does not drift back, which is the difference I expected from a random-walk level.
+
+
 ## Forecast and Report
 
 ```{r ss forecast plots}
@@ -326,7 +341,7 @@ plot_ss <- function(fc, sd, title) {
     scale_colour_manual(values = c("Actual" = "black", "Forecast" = "red")) +
     scale_fill_manual(values = c("95% interval" = "steelblue")) +
     facet_wrap(~panel, scales = "free_x", ncol = 2) +
-    labs(x = NULL, y = "Daily peak (MW)", title = title, colour = NULL, fill = NULL) +
+    labs(x = NULL, y = "Daily Peak Demand (MW)", title = title, colour = NULL, fill = NULL) +
     theme(legend.position = "bottom")
 }
 plot_ss(f1, sd1, "State space: 1-day ahead forecasts")
@@ -334,26 +349,28 @@ plot_ss(f1, sd1, "State space: 1-day ahead forecasts")
 
 ```
 
-The above plot shows the one-day forecasts for the test year in four panels of about three months each. The black line is the actual daily peak, the red line is the forecast and the blue band is the 95% interval. The forecasts follow the actual peaks closely and pick up the weekly cycle, including the lower weekend days and the dips around public holidays. They also follow the large fall at the end of December and the move to a higher level from April, because the level adjusts after each day. At sharp turning points the forecast is usually about a day behind, which is what I expect when each forecast only knows about yesterday. The biggest misses are on unusual days. For example, the forecast is about 1000 MW too low on the lowest days at the end of December. The 95% band is about 1000 MW either side and contains the actual peak on 340 of the 365 days, which is 93.2%. The RMSE is 542 MW, and the MAPE of 1.5% means the forecast is on average about 1.5% away from the actual peak.
+The plot shows the one-day forecasts for the test year in four panels of about three months each. The black line is the actual daily peak, the red line is the forecast and the blue band is the 95% interval. The forecasts follow the actual peaks closely and pick up the weekly cycle, including the lower weekend days, and the dips on the public holidays, such as Easter and Freedom Day in April 2026. They also follow the large fall at the end of December and the rise into winter from May, because the level adjusts after each day. When demand changes for a reason the calendar does not explain, the forecast is usually about a day behind, because the level only moves after the error has been seen. The jump in mid-August 2026 is an example, and those days were also among the unusual high days in Project 3. The biggest misses are at the end of December, where the forecast is about 1000 MW too low on the lowest days. The band is on average 1016.82 MW either side and contains the actual peak on 340 of the 365 days, which is 93.2%. The MAPE of 1.55% means the forecast is on average about 1.5% away from the actual peak.
 
 ```{r 7 day ahead forecast}
 plot_ss(f7, sd7, "State space: 7-day ahead forecasts")
 
 c(mean(1.96 * sd1), mean(1.96 * sd7))
 ```
-The seven-day forecasts use the same layout. They still have the right weekly shape and the right level for most of the year, because each forecast starts from the filtered state seven days earlier. They miss when the level changes within the week, because a random-walk level cannot see these changes coming. In mid-August the actual peak rose to about 30800 MW while the forecast stayed near 28500 MW. A week later, in late August, the forecast was at about 30,000 MW when demand had already fallen back to about 28000 MW. The band is also wider, at about 2300 MW either side, because the uncertainty about the level grows by $W$ for each of the seven days. It contains the actual peak on 361 of the 365 days, which is 98.9%. This is more than the 95% I aim for, so the band is wider than it needs to be. The seven-day RMSE is 905 MW, which is about 360 MW more than at one day.
 
-## Extension: Local Linear Trend
-
-<!-- TODO: write after the code is done -->
-
-## Extension: Missing Observations
-
-<!-- TODO: write after the code is done -->
+The seven-day forecasts are shown in the same way. They still have the right weekly shape and the right level for most of the year, because each forecast starts from the filtered state seven days earlier and the calendar terms are known in advance. They miss when the level changes within the week, because a random-walk level cannot see these changes coming. In mid-August 2026 the actual peak rose to about 30800 MW while the forecast stayed near 28500 MW. About a week later the forecast was at about 30000 MW, when demand had already fallen back to about 28000 MW, so the forecast repeated the jump a week late. The band is wider, on average 2343.70 MW either side, because the uncertainty about the level grows by $W$ for each of the seven days. It contains the actual peak on 361 of the 365 days, which is 98.9%, so the band is wider than it needs to be. The seven-day RMSE of 904.79 MW is about 363 MW more than at one day.
 
 ## Discussion
 
-<!-- TODO: write after the code is done -->
+Project 3 ended with two models that each got part of the problem right. The regression had the calendar right and the level wrong, and ETS followed the level but did not know the calendar. The state space model puts the two together, and it was the most accurate model at both horizons. One day ahead its RMSE was 542.16 MW, against 599.88 MW for ETS(A,A,A), 606.36 MW for the regression with AR(1) errors and 622.80 MW for Eskom's own forecast. Seven days ahead it was 904.79 MW, against 1056.04 MW for ETS, 1058.72 MW for the seasonal naive forecast and 1236.37 MW for the regression with AR(1) errors. The plots suggest that the two parts help in different places. Against ETS, the calendar terms let the forecast get holidays such as Easter right on the day, where ETS only reacted the day after. Against the regression, the moving level matters most at seven days ahead, where the regression's forecast drifted back to its fixed level and the state space forecast did not.
+
+The level moves a lot from day to day. Its standard deviation is 417.97 MW per day, against 222.07 MW for the observation noise, so $W$ is 3.54 times $V$. This gives a Kalman gain on the level of 0.81 at the end of the training data, close to the ETS smoothing parameter of 0.91 in Project 3. In both models the level depends mostly on the last day or two, so the state space model follows the level of demand in much the same way as ETS. Over the training data the smoothed level fell from about 31000 MW to about 28000 MW, mostly from late 2023 onwards. A level that can move like this is what the regression's linear trend could not copy when demand fell faster in the test year.
+
+The one-step errors are not white noise. The ACF has positive spikes at lags 7, 14, 21 and 28 and negative spikes at lags 2 to 5, and the Ljung-Box test rejects white noise with $X^2 = 171.25$ on 12 degrees of freedom. The errors also have heavier tails than the normal distribution, and seven of the eleven largest fall on a public holiday, in the year-end break or on the day before a holiday. The intervals scored best of all the models I compared, with the lowest CRPS at both horizons, 298.98 at one day and 520.07 at seven days, but they are not the right width. The one-day intervals are slightly too narrow, covering 93.2% of the test days, and the seven-day intervals are too wide, covering 98.9%. I think the seven-day intervals are too wide because the level is treated as a pure random walk, while the negative autocorrelation suggests that part of each shock reverses within a few days.
+
+The project has several limitations. The gaps between the models come from one test year, and I have not tested whether they are statistically significant, so I can say the state space model had the lowest errors but not that it is significantly better. The variances $V$ and $W$ were estimated once on the training data and kept fixed, so the intervals cannot adjust if demand becomes more or less variable. The weekday effects are also fixed, which may be why a weekly pattern is left in the errors, and the day before a public holiday is not in the model at all. The check against dlm only covered a model with one state. Finally, I used the same holiday list as Project 3, which was chosen by looking at the full series, and I had no weather data to explain the large unusual days.
+
+The next step would be to let the weekday effects change slowly through the year, by giving the weekday states a small variance in $W$ instead of zero, and to add an indicator for the day before a public holiday. Both are aimed at the structure left in the errors, and both fit into the same filter, because only $W$ and $F$ change and there is one more variance to estimate.
+
 
 ## References
 

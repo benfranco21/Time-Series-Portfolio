@@ -41,7 +41,7 @@ kalman_filter <- function(y, FF, GG, W, V, m0, c0, skip = 0) {
     ok <- !is.na(e)
     ok[seq_len(skip)] <- FALSE
     loglik <- -0.5 * sum(log(Q[ok]) + e[ok]^2 / Q[ok])
-    list(a = a, R= R, f=f, Q = Q, e= e, m = m, C= C, loglik = loglik)
+    list(a = a, R= R, f=f, Q = Q, e = e, m = m, C = C, loglik = loglik)
 }
 
 

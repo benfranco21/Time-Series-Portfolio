@@ -1,4 +1,4 @@
-# Hand-coded simple exponential smoothing: updating equations, SSE, optim() estimation, forecasts and intervals
+# Hand-coded simple exponential smoothing:
 ses_filter <- function(y, alpha, l0){
     n <- length(y)
     level <- numeric(n + 1)

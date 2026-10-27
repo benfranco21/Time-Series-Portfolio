@@ -1,26 +1,18 @@
 ---
-title: "Understanding Time Series Cross-Validation"
+title: "Understanding time series cross-validation"
+date: 2026-08-12
 ---
 
-## Journal Entry: Understanding Time Series Cross-Validation
+While working through the course notes on model validation I got stuck on the three cross-validation strategies: walk-forward, expanding window and sliding window. My problem was with the idea itself. I could not see how you could validate on a data point if that point had to be forecast first. It felt circular, like the model was being checked against its own prediction.
 
-While working through the course notes on model validation, I got stuck on the three cross-validation strategies (walk-forward, expanding window, sliding window). My confusion was conceptual: I couldn't see how you could "validate" on a data point if that point had to be forecasted first — it felt circular, like the model was being checked against its own prediction.
+Working through this with Claude cleared it up. The validation point is never a forecast that gets fed back into the model. It is always a real observed value that is held back from training for that step. The model is fitted only on the data before that point, it forecasts that point, and the forecast is compared with the actual value to give an error.
 
-Working through this with Claude cleared it up. The key realisation is that the validation point is never a forecasted value fed back into the model. It is always a **real, already-observed** data point that is temporarily withheld from training. The model is fit only on the data before that point, produces a forecast for it, and that forecast is then compared against the actual observed value to get an error.
+**How the strategies differ.** To make it stick we used an example of 100 data points with an initial training size of 70, which leaves 30 forecast origins. In every strategy the origin moves forward one step at a time and the model is refitted at each step. What changes is what happens to the training set as it moves. Under an expanding window every past observation is kept, so the training set starts at the first observation and grows by one each step. Under a sliding window the training set has a fixed length, so each step adds the newest observation and drops the oldest. Walk-forward validation, as the course defines it, follows the same rule as the expanding window. The slides list it as a separate strategy but point out that the two grow the training set in exactly the same way (slide 54), and the Part 1 notes describe them as two names for the same procedure.
 
-We worked through a concrete example to make this stick: 100 data points, an initial training size of 70, leaving 30 possible origins. For each strategy, the origin moves forward one step at a time, but the strategies differ in how the training window behaves as it does:
+**Which one to use.** The choice depends on the data. An expanding window suits a stable series where old data is still useful, because it gives more stable parameter estimates. A sliding window suits a series with structural breaks, like financial data, because it forgets old observations that no longer describe the process.
 
-- **Walk-forward**: the model re-estimates at each new origin using all data up to that point, then forecasts one step ahead.
-- **Expanding window**: similar to walk-forward, but the training set grows to include all history up to the current origin (window start is fixed, end grows).
-- **Sliding window**: the training set is a fixed-size window that slides forward, dropping older observations as new ones are added.
+**Comparing models.** The other thing I had mixed up was how this fits into choosing between models. I was treating the 30 origins as 30 different models, but they are two separate loops. One model is fitted 30 times, once at each origin, and the 30 errors are averaged into one score. Then you choose the next model and repeat. Once every candidate has a score, you pick the one with the lowest error. The validation strategy is chosen once at the start based on the data, and the same one is used for every model.
 
-The other thing I clarified was how this fits into model *comparison*. It's easy to conflate "30 origins" with "30 different models," but they're separate loops:
+**Link to Project 1.** This was the first topic in the course that made me curious, and I wanted to see how cross-validation for time series worked in practice and not just on a made up example. That led me to explore it in Project 1, where I used it on the AAPL data to compare the models.
 
-1. For a single candidate model, fit it once at each of the 30 origins, producing 30 errors, which are averaged into one CV score for that model.
-2. Repeat this entire process for each other candidate model under consideration.
-3. Compare the averaged scores across models and select the one with the lowest error.
-
-So the validation strategy itself is chosen once, up front, based on the nature of the data (e.g. whether it has structural breaks), and then applied consistently across all candidate models — it isn't something you also search over.
-
-**Takeaway:** cross-validation in a time series context is really just an adaptation of the "train on the past, test on the future" rule, repeated across many origins to get a stable estimate of a model's out-of-sample accuracy, rather than a single potentially lucky/unlucky train-test split.
-
+**Takeaway:** time series cross-validation follows the rule of training on the past and testing on the future, repeated over many origins. Averaging the errors over all the origins gives a more reliable picture of how a model forecasts than one train and test split, which could be lucky or unlucky.
