@@ -1,0 +1,182 @@
+/*-- scss:defaults --*/
+
+// Fonts (Google Fonts, with system fallbacks if offline)
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+$font-family-sans-serif: "Inter", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif !default;
+$font-family-monospace: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace !default;
+$font-size-base: 1.03rem !default;
+$line-height-base: 1.65 !default;
+$headings-font-weight: 600 !default;
+$border-radius: 6px !default;
+$border-radius-lg: 8px !default;
+
+/*-- scss:rules --*/
+
+// Accent colour, chosen by theme (flatly body is white, darkly is not)
+$is-dark: $body-bg != #ffffff;
+$accent: if($is-dark, #5fb3c4, #1f7a8c);
+$accent-soft: if($is-dark, rgba(95, 179, 196, 0.14), rgba(31, 122, 140, 0.08));
+$hair: if($is-dark, rgba(255, 255, 255, 0.14), rgba(0, 0, 0, 0.12));
+
+body {
+  font-family: $font-family-sans-serif;
+}
+
+// Headings
+h1, h2, h3, h4 {
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  margin-top: 2.2rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid $hair;
+}
+
+h1.title {
+  font-weight: 700;
+}
+
+// Links in the page body
+main a:not(.btn):not(.nav-link):not(.anchor-section) {
+  color: $accent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+main a:not(.btn):not(.nav-link):hover {
+  text-decoration-thickness: 2px;
+}
+
+// Navbar: keep the theme colour, use a light accent for hover and active
+.navbar .nav-link:hover,
+.navbar .nav-link.active,
+.navbar .dropdown-item.active {
+  color: #8fd3e0 !important;
+}
+
+.navbar .dropdown-item.active {
+  background-color: transparent;
+}
+
+// Table of contents
+nav[role="doc-toc"] a.active,
+#TOC a.active {
+  color: $accent !important;
+  border-left-color: $accent !important;
+  font-weight: 500;
+}
+
+// Code blocks and inline code
+pre,
+code {
+  font-family: $font-family-monospace;
+}
+
+pre.sourceCode,
+div.sourceCode {
+  border-radius: $border-radius;
+  border: 1px solid $hair;
+  font-size: 0.86em;
+}
+
+// Printed R output reads as a result, not as code
+div.cell-output pre,
+div.cell-output-stdout pre {
+  background-color: $accent-soft;
+  border: 1px solid $hair;
+  border-left: 3px solid $accent;
+  border-radius: $border-radius;
+  font-size: 0.86em;
+}
+
+// Collapsed code ("Show code")
+details.code-fold > summary,
+.cell details > summary {
+  display: inline-block;
+  padding: 0.15rem 0.7rem;
+  margin-bottom: 0.5rem;
+  color: $accent;
+  border: 1px solid $accent;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+details.code-fold > summary:hover,
+.cell details > summary:hover {
+  background-color: $accent-soft;
+}
+
+details[open].code-fold > summary,
+.cell details[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+// "Code" dropdown in the title block
+.code-tools-button {
+  color: $accent;
+  border: 1px solid $accent;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+// Tables
+table.table,
+.table {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.93em;
+  border-collapse: collapse;
+}
+
+.table > :not(caption) > * > * {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid $hair;
+}
+
+.table > thead > tr > th,
+.table > thead th {
+  background-color: $accent-soft;
+  border-bottom: 2px solid $accent;
+  font-weight: 600;
+}
+
+.table > tbody > tr:nth-of-type(even) > * {
+  background-color: if($is-dark, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.025));
+}
+
+@media (max-width: 767px) {
+  table.table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+// Callouts
+.callout {
+  border-radius: $border-radius;
+  border: 1px solid $hair;
+  border-left-width: 4px;
+}
+
+.callout.callout-style-default.callout-note {
+  border-left-color: $accent;
+}
+
+.callout.callout-style-default .callout-title {
+  font-weight: 600;
+}
+
+// Figures: images are exported with a white background, so give them a light card in dark mode
+@if $is-dark {
+  div.cell-output-display img,
+  figure img,
+  .quarto-figure img {
+    background-color: #ffffff;
+    padding: 0.5rem;
+    border-radius: $border-radius;
+  }
+}
