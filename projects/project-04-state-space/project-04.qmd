@@ -374,4 +374,4 @@ The next step would be to let the weekday effects change slowly through the year
 
 ## References
 
-<!-- TODO: write after the code is done -->
+The sources for this project are listed on the portfolio [References](../../references.qmd) page.

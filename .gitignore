@@ -10,3 +10,4 @@ _site/
 *_cache/
 *_files/
 _site*.zip
+.DS_Store

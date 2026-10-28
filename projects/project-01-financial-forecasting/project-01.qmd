@@ -537,3 +537,6 @@ The diagnostics showed a second limitation, which does not depend on the choice 
 
 There are also limits to how far these results go. They come from one stock and one window, with 497 training days and one test year that started straight after a sharp fall in price, so the size of the gap between the branches may not carry over to other periods. The cross-validation used 36 to 40 origins, 5 days apart and all in the later part of the training set, so small differences between the candidate models could not be told apart from noise. Finally, I left the four small spikes in the ACF of the returns unmodelled. I judged them too small and too irregular to justify AR or MA terms out to lag 17, but I did not test that choice.
 
+## References
+
+The sources for this project are listed on the portfolio [References](../../references.qmd) page.

@@ -949,3 +949,4 @@ saveRDS(bench, here::here("projects", "project-03-eskom-demand", "bench_p3.rds")
 
 ## References
 
+The sources for this project are listed on the portfolio [References](../../references.qmd) page.
