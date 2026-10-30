@@ -1,5 +1,6 @@
 ---
 title: "Lecture: State space models"
+date: 2026-10-05
 ---
 
 In today's lecture Birgit introduced state space models, and this is the section I have enjoyed most so far.

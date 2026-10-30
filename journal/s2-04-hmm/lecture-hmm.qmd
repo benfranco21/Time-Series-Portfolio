@@ -1,0 +1,22 @@
+---
+title: "Lecture: Hidden Markov models"
+date: 2026-10-19
+---
+
+Birgit covered hidden Markov models over two lectures, and it was the last topic of Section 2.
+
+**A hidden state behind the data.** The idea is that there is a hidden state $z_t$ that we never see, which can only take one of a few values, and each observation is produced by a distribution that depends on the state at that time. So an HMM is a special case of a state space model where the state is discrete and not continuous. The model needs two parts. The transition matrix $\Gamma$ gives the probability of moving from one state to another, and because the states follow a Markov chain, the next state only depends on the current one. The state dependent distributions give the probability of each observation in each state, for example a Poisson with a small mean in a quiet state and a bigger mean in a busy state. The chain is often started from its stationary distribution $\delta$, where $\delta\Gamma = \delta$.
+
+**The algorithms.** What I found most interesting was learning the different algorithms, and that a lot of it comes down to finding the probability of being in state $i$ given the information up to that point. The forward algorithm does this step by step:
+
+$$\alpha_1 = \delta P(x_1), \qquad \alpha_t = \alpha_{t-1}\Gamma P(x_t)$$
+
+and adding up the last $\alpha$ gives the likelihood. Listing every possible path of states would need $m^T$ terms, which gets far too big very quickly, so the forward algorithm is what makes the likelihood possible to compute. Written as a function of the parameters, it can be maximised with `nlm()` to fit the model. The Viterbi algorithm then finds the most likely sequence of hidden states. At each time it keeps the best path into each state and remembers where it came from, and at the end it steps backwards from the most likely final state to trace out the whole sequence.
+
+**Forecasting.** Once the model is fitted, it can be used to forecast. The probabilities of being in each state at the last time point are pushed forward through $\Gamma$, and the forecast for the next observation is a mix of the state dependent distributions weighted by those probabilities. This works in a similar way to forecasting with a state space model, except that because it is a Markov model, everything only depends on the previous step.
+
+**What I found interesting.** I liked how the HMM ties back to earlier sections. It has the same structure as the state space models, with a hidden state and an observation that depends on it, and the forward algorithm plays the same role here that the Kalman filter plays there. I also found it interesting that the most likely path from Viterbi does not have to be the true one. A short visit to another state can be smoothed away if nothing in the data points to it.
+
+**Link to the tutorial.** These algorithms made me curious to see them work step by step, so I worked through Birgit's HMM tutorial in Section 2 and coded the forward algorithm and the Viterbi algorithm myself.
+
+**Takeaway:** an HMM explains a series through a hidden state that switches between a few values, with the observations depending on the current state. The forward algorithm gives the likelihood without listing every path, and the Viterbi algorithm recovers the most likely sequence of hidden states, which together let the model be fitted, decoded and used to forecast.

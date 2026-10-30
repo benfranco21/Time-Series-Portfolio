@@ -1,5 +1,6 @@
 ---
 title: "ARCH and GARCH: modelling variance over time"
+date: 2026-08-31
 ---
 
 ARCH and GARCH was mostly a self taught section of the course. I worked from the ARCH and GARCH guide we were given, which summarises the models and the steps for fitting them, and worked through the tutorial in my own time.
@@ -14,6 +15,6 @@ A large shock yesterday raises today's variance, and because $\beta$ carries the
 
 **The tutorial.** The first part used T-bill rate data. I started with an AR(1) and ARCH(1) on the level series, but the level was not stationary, so I had to difference it before the variance model made sense. I then built it up to an AR(1) with GARCH(1,1) and t distributed errors on the differenced series. The second part was the Black Monday exercise, where I fitted an AR(1) with GARCH(1,1)-t to S&P 500 returns from before the crash and worked out the probability of the Black Monday return under that model. It came out at about 8.13e-5, roughly 1 in 12300, which showed how extreme that day was even for a model built to handle volatile periods.
 
-**Link to Project 2.** I found it interesting that we could now pull out how the variance changes from data with a lot of underlying variance, like stock prices. This led me to Project 2. In Project 1 the residuals of my ARIMA model on AAPL returns still had volatility clustering left in them, so I fitted a GARCH(1,1) to the same data to see if modelling the variance would capture what ARIMA had missed.
+**Link to Project 2.** I found it interesting that we could now pull out how the variance changes from data with a lot of underlying variance, like stock prices. This led me to Project 2, where I wanted to see whether a GARCH model could pick up the changing variance in the same AAPL data I used in Project 1. 
 
 **Takeaway:** ARIMA models the mean and GARCH models the variance, and the two work together. For financial data the variance is often where most of the information is, so modelling it gives a much fuller picture than the mean alone.

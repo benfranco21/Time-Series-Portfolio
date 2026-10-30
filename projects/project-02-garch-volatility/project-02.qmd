@@ -16,7 +16,7 @@ ARCH and GARCH models were developed for this situation. They add a second equat
 The second question concerns the intervals and not the point forecasts. Both the ARIMA and the GARCH model use a constant mean, so their point forecasts are both close to zero and small compared with the spread of the returns. The course notes make the same point about variance models in general, that what changes is the uncertainty attached to the forecast and not the forecast itself (Section 7.3.3). An ARIMA interval has the same width every day, whereas a GARCH interval should be wider after volatile days and narrower after calm days. A 95% interval should contain the actual return about 95% of the time, and I test whether this holds for each model, and for calm and volatile periods separately.
 
 
-The data are the same as in Project 1: AAPL daily closing prices from [data source] between January 2017 and December 2019. The first 66% of the observations (to 21 December 2018) form the training set and the remaining observations (24 December 2018 onwards, about one year) form the test set. Keeping the same split as Project 1 allows the two projects to be compared directly, and it keeps the test set untouched until the models have been chosen.
+The data are the same as in Project 1: AAPL daily closing prices from the Kaggle data set S&P 500 Stocks: 25 Years of Data (darkmatternet, 2026) between January 2017 and December 2019. The first 66% of the observations (to 21 December 2018) form the training set and the remaining observations (24 December 2018 onwards, about one year) form the test set. Keeping the same split as Project 1 allows the two projects to be compared directly, and it keeps the test set untouched until the models have been chosen.
 
 
 The analysis follows the modelling workflow in Sulaiman Salau's ARCH and GARCH guide (Section 9) and Chapter 7 of the course notes: define the series, explore it, specify the mean, obtain the innovations, check for ARCH effects, specify the variance, estimate, diagnose, compare the models, and forecast and report. The mean equation is checked again under joint estimation with the variance equation. The notes warn that fitting the mean first and the variance to its residuals afterwards gives wrong standard errors (Section 7.10), and the mean chosen in Project 1 was selected under a constant-variance likelihood. The sections below follow the same order as the workflow.
@@ -68,7 +68,9 @@ The series modelled in this project is the daily log return of AAPL. Sulaiman Sa
 
 The variance equation describes the innovations around a conditional mean and not the level of a series, and the course notes list fitting a GARCH model to prices as a common mistake (Section 7.13). The training prices are also non-stationary, as Project 1 showed, ADF p = 0.96, KPSS p < 0.01, so I work with returns. The log return on day t is
 
-r_t = log(P_t) - log(P_{t-1}),
+$$
+r_t = \log(P_t) - \log(P_{t-1}),
+$$
 
 
 where P_t is the closing price. This is the same return series as in Project 1. For small moves the log return is close to the simple percentage return (course notes, Section 7.3.1; Salau's guide, Section 2). Taking the first difference of the log price loses the first observation, so the 497 training prices give 496 training returns.
@@ -245,6 +247,8 @@ Two more diagnostics apply to both models. The Nyblom test rejects the null hypo
 The Sign Bias test is not significant for either model, joint effect p = 0.67 for ARCH(1) and 0.82 for GARCH(1,1), so there is no evidence that negative shocks raise volatility more than positive shocks of the same size. The notes suggest fitting the symmetric model first and only moving to an asymmetric one if the asymmetry is significant (Section 7.11), so I keep the symmetric GARCH(1,1).
 
 ## Compare Models (Part A: Residual Problem / Part B: Interval Calibration)
+
+### Part A
 
 ```{r compare models}
 garch11_residuals <- residuals(fit_garch11, standardize = TRUE)

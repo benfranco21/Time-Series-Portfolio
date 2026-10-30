@@ -2,6 +2,128 @@
 title: "AI Use Log"
 ---
 
-| Date | Tool used | What I asked it to help with | Link to conversation | What I checked/changed myself |
-|------|-----------|-------------------------------|-----------------------|--------------------------------|
-|      |           |                               |                       |                                |
+This log records the substantive ways I used AI while building this portfolio, following the template in Section 3.3 of the Portfolio Guidelines. The tool throughout was Claude (Anthropic), used in two ways: Claude chats inside a project that held the course notes, slides and tutorial sheets, and Claude Code inside VS Code for changes to the files in my repository. I have kept the conversations behind each entry and can talk through any of them in the oral.
+
+I used Claude as an assistant. The ideas, the questions each project asks, the choice of data and models, and every decision about how to compare them were my own. I ran all the R code in my own session, checked every number in my write-ups against my own printed output, and made the final call on anything that went into the portfolio. Claude explained concepts when I got stuck, assisted me with the code and helped me debug it, and pointed out errors and claims that my output did not support. For each write-up I did the analysis first and then discussed the output with Claude. The write-up was built from my own interpretation of that output, Claude helped me refine the writing and fix grammar, and I edited every paragraph into its final wording myself.
+
+## Summary
+
+| # | Date | Area | Tool |
+|---|------|------|------|
+| 1 | Aug to Sep 2026 | Learning support for Section 1 | Claude (chat) |
+| 2 | Aug to Sep 2026 | Practical 1 and setting up the portfolio site | Claude (chat), Claude Code |
+| 3 | Sep and Oct 2026 | Project 1: ARIMA on AAPL | Claude (chat), Claude Code |
+| 4 | Sep and Oct 2026 | Project 2: GARCH on AAPL | Claude (chat), Claude Code |
+| 5 | Oct 2026 | Project 3: exponential smoothing vs regression on Eskom | Claude (chat) |
+| 6 | Oct 2026 | Project 4: state space model and Kalman filter on Eskom | Claude (chat) |
+| 7 | 20 Oct 2026 | Gap review and site restructure | Claude (chat), Claude Code |
+| 8 | 21 Oct 2026 | Section 1 and Section 2 tutorials | Claude (chat), Claude Code |
+| 9 | 28 Oct 2026 | This log and final checks | Claude (chat), Claude Code |
+
+## 1. Learning support for Section 1
+
+**Date:** 12 August to 23 September 2026
+
+**Tool used:** Claude (chat)
+
+**What I asked it to help with:** I used Claude as a tutor while working through Section 1. I asked it to explain the three cross-validation strategies (walk-forward, expanding window, sliding window), because I could not see how you validate a forecast without it being circular. I also used it while doing the T-bill ARMA and GARCH lab and the Black Monday exercise, and when I taught myself spectral analysis from Chapter 8 of the notes, since that topic was not covered in lectures. My pattern was to attempt each question first and then ask Claude to explain the concept or check my answer.
+
+**Link to the conversation:** [Time series learning and tutoring](https://claude.ai/chat/756dd3bc-5c7e-4705-aa99-117b2fe95e12)
+
+**What I checked or changed myself:** I checked the explanations against the definitions in the course notes and Salau's guide. For cross-validation I worked through a small numerical example and restated the whole workflow back in my own words before I used it in a journal entry. On the spectral tutorial I worked through each question myself, and one of my answers was corrected (the alias of a frequency of 0.70 is 0.30, a period of about 3.33, not exactly 3), which I then checked against the notes. 
+
+## 2. Practical 1 and setting up the portfolio site
+
+**Date:** 17 August to 30 September 2026
+
+**Tool used:** Claude (chat), Claude Code
+
+**What I asked it to help with:** I asked Claude to help me replicate the `ts()` practical from the slides and then apply the same steps to AAPL data, including debugging an "implicit gaps" error that `ACF()` threw on my tsibble. I then used Claude to plan the layout of the portfolio as a Quarto website following the structure in the guidelines, and used Claude Code to carry out that plan in my repository.
+
+**Link to the conversation:** [Portfolio structure](https://claude.ai/chat/41f568c8-0bf9-4542-8174-3432cd73a06c)
+
+**What I checked or changed myself:** I ran all the practical code myself and only kept the fix for the gaps error (indexing by trading day instead of calendar date) once I understood why tsibble treats weekends as missing values. For the site set-up I wrote the rules Claude Code had to follow: back up the whole folder first, change nothing in the body of my existing files, and list every original file with where it ended up. I checked its plan before approving it, checked the backup and the file-by-file list afterwards, and rendered the site myself.
+
+## 3. Project 1: ARIMA on AAPL
+
+**Date:** September 2026 (first build), 24 October 2026 (review)
+
+**Tool used:** Claude (chat), Claude Code
+
+**What I asked it to help with:** In the first build I chose the question, the data window and the train and test split, and Claude assisted me with the code for the rolling-origin cross-validation and multi-horizon forecasting functions and helped me debug it as I ran it on my data. After Birgit's feedback I used Claude to help me refine the whole project section by section: adding the missing Introduction and exploratory analysis, a forecast plot with prediction intervals, and pointing out any claim in my old write-up that did not match my printed output and function files.
+
+**Link to the conversation:** [Project 1 edit](https://claude.ai/chat/4c5a2e22-115b-42f1-84d2-05ad9053fd09)
+
+**What I checked or changed myself:** While checking the forecast results I found a one-day offset in `forecast_functions.R` that meant the price and returns branches were being scored on different test days, and I fixed it. The review also picked up several explanations from my earlier write-up that my output did not support, including the "geometric compounding" reason for the returns branch winning (the real difference is the drift) and a claim that cross-validation reproduced the AICc ranking. I made the modelling decisions: keeping ARIMA(0,0,0) for returns over AR(1), stating the missing drift model as a limitation rather than fitting it.
+
+## 4. Project 2: GARCH on AAPL
+
+**Date:** September 2026 (first build), 25 October 2026 (review)
+
+**Tool used:** Claude (chat), Claude Code
+
+**What I asked it to help with:** I followed the ten-step workflow in Salau's ARCH and GARCH guide and Claude assisted me with the code for each step using `rugarch` and `FinTS` and helped me debug it, while I checked each step against the guide. In the review I went through every section again with Claude helping me refine the writing, checking each number against my rendered output and fixing duplicate headings, tables that did not render and a heading that broke the table of contents.
+
+**Link to the conversation:** [Project 2 edit](https://claude.ai/chat/88e236da-86ff-42d1-a423-4959dba86e70)
+
+**What I checked or changed myself:** Claude pointed out a backwards reading of the ARCH(1) alpha parameter and two claims that were not supported by my results, and I corrected them. I set a rule for the rest of the portfolio that any edit to my writing had to show the old wording, the new wording and the reason, so I could judge each suggestion myself. I decided not to add a separate Conclusion section, since the Discussion and the one-page summary already do that job, and I confirmed where the 12 lags in the ARCH LM test came from. 
+
+## 5. Project 3: exponential smoothing vs regression on Eskom
+
+**Date:** October 2026 (build), 26 October 2026 (review)
+
+**Tool used:** Claude (chat)
+
+**What I asked it to help with:** I requested the Eskom hourly demand data from the Eskom Data Portal and decided to model daily peak demand. I worked through the report headers strictly in order and wrote the code one chunk at a time, asking Claude to explain methods and to help me debug errors. Once the code was finished I wrote out my interpretation of each result, and Claude helped me refine my wording, fix grammar and point out anything my output did not support.
+
+**Link to the conversation:** [Project 3 edit](https://claude.ai/chat/65c473ea-52b1-49ba-84cb-509d0b2da464)
+
+**What I checked or changed myself:** I chose the data, the models and the comparison design, including the 24 December to 2 January window, which I picked from the festive calendar rather than from the data. Every score in the write-up is given to two decimal places exactly as it printed. Claude pointed out a claim that Easter falls in April every year, which is wrong because Good Friday 2024 was in March, and helped me debug a duplicated plot in the Forecast and Report section. I decided to keep the caveat that I did not test the significance of the comparison with Eskom's own forecast.
+
+## 6. Project 4: state space model and Kalman filter on Eskom
+
+**Date:** October 2026 (build), 27 October 2026 (review)
+
+**Tool used:** Claude (chat)
+
+**What I asked it to help with:** I wanted to see whether a state space model could fix the weaknesses I found in Project 3. I wrote the Kalman filter, the log-likelihood and the smoother myself and used Claude to explain the steps and help me find bugs. In the review Claude helped me refine each section of my write-up and point out errors, checking every number against my rendered output.
+
+**Link to the conversation:** [Project 4 editing](https://claude.ai/chat/0afc45a6-4d50-404e-990c-2fdabf2cb46a)
+
+**What I checked or changed myself:** I checked my filter against the `dlm` package and against simulated data before fitting it to the Eskom series. 
+
+## 7. Gap review and site restructure
+
+**Date:** 20 October 2026
+
+**Tool used:** Claude (chat), Claude Code
+
+**What I asked it to help with:** I asked Claude to compare the portfolio against the course material and guidelines to find topics I had not covered. I then sketched the site structure I wanted (Home, Projects, Journal, Section 1 and Section 2 tutorials, Reflective Commentary) and used Claude to turn it into a two-phase Claude Code prompt: a read-only inventory first, then the file moves only after my approval.
+
+**Link to the conversation:** [Time series portfolio restructure](https://claude.ai/chat/0db9fe09-27c7-4e81-b2a4-a7bf58eb5a90)
+
+**What I checked or changed myself:** I chose which gaps to fill and which to drop, and set the journal topics for Section 2. I read the inventory before approving the moves and caught that it had missed two of the four entries in my original journal file, because it had only read the start of the file. After the moves I rendered the whole site and confirmed every page built.
+
+## 8. Section 1 and Section 2 tutorials
+
+**Date:** 21 October 2026
+
+**Tool used:** Claude (chat), Claude Code
+
+**What I asked it to help with:** I used Claude to assist me with the spectral analysis tutorial I had used to teach myself, and to work through Question 1 of Birgit's state space tutorial and Questions 2, 3, and 7 of her HMM tutorial. I later used Claude Code to review all seven tutorial pages for errors.
+
+**Link to the conversation:** [Spectral decomposition guide](https://claude.ai/chat/28d11b5c-55cb-4d5f-a1fb-621ada46ae60)
+
+**What I checked or changed myself:** For the state space and HMM tutorials I used Claude to assist me on where my understadning lacked and then help debug and correct any errors I had. I wrote the discussion at the end of each tutorial in my own words, with Claude helping me refine the wording and pointing out errors. I checked the Claude Code review findings before applying them. 
+
+
+## 9. This log and final checks
+
+**Date:** 28 October 2026
+
+**Tool used:** Claude (chat), Claude Code
+
+**What I asked it to help with:** I asked Claude to go through my project chats and help me put this log together, and I used Claude Code throughout the course to check that the whole site rendered and its links worked. I committed and pushed every change myself.
+
+**Link to the conversation:** [AI log](https://claude.ai/chat/0c28ff6e-4e7f-44fc-83e8-07f65b0a8770)
+

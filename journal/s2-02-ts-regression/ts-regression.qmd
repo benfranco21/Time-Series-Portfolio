@@ -1,5 +1,6 @@
 ---
 title: "Time series regression"
+date: 2026-09-21
 ---
 
 I worked through this section from Birgit's Chapter 2 notes and slides while setting up Project 3. The idea is to use a normal regression model to explain a time series with predictor variables, and then deal with the fact that the errors in time series data are usually correlated.
@@ -14,6 +15,6 @@ $$y_t = \beta x_t + e_t, \qquad e_t = \phi e_{t-1} + w_t$$
 
 This can be fitted with generalised least squares, using `gls()` from `nlme` with `correlation = corAR1()`. The way I understand feasible GLS is that you fit OLS first, estimate the correlation of the errors from its residuals, refit using that correlation, and repeat until the estimates settle. So the regression explains what it can with the predictors, and the AR part picks up the correlation that is left over.
 
-**Link to Project 3.** After exponential smoothing, regression was the second approach I wanted to try on a real data set with trend and seasonality, because it lets me put the calendar effects in directly as predictors. So I used it as the other model to compare against exponential smoothing in Project 3, first with trend and calendar terms only, and then with AR(1) errors added.
+**Link to Project 3.** After exponential smoothing, regression was the second approach I wanted to try on a real data set with trend and seasonality, because it lets me put the calendar effects in directly as predictors. So I used it as the other model to compare against exponential smoothing in Project 3, first with trend and calendar terms only, and then with ARMA errors added.
 
 **Takeaway:** a regression model is easy to read, since each coefficient says what a predictor adds, but with time series data the errors have to be checked for autocorrelation. If they are correlated, adding ARMA errors keeps the regression and fixes the standard errors, which is what makes it usable for time series.

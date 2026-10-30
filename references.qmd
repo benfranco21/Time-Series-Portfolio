@@ -34,7 +34,7 @@ Erni, B. (2026d).  State space tutorial sheet. Honours Time Series Module, Unive
 
 Erni, B. (2026e).  HMM tutorial sheet. Honours Time Series Module, University of Cape Town. Used in the Section 2 HMM tutorial (Questions 2, 3 and 7).
 
-Salau, S. *ARCH and GARCH guide* [course handout]. Honours Time Series Module, University of Cape Town. Used in Project 2.
+Salau, S. (2026) *ARCH and GARCH guide* [course handout]. Honours Time Series Module, University of Cape Town. Used in Project 2.
 
 ## Papers cited through the course notes
 

@@ -1,6 +1,7 @@
 ---
 title: "Journal"
 ---
+   This journal records what I learnt in each part of the course, what I struggled with and what I wanted to try next. I wrote one entry per topic, some straight after a lecture and some once I had worked through the whole section. Below are those entries, categorised by each topic covered in this course.
 
 ## Section 1
 
@@ -8,7 +9,7 @@ title: "Journal"
 - [2. Cross-validation and forecast evaluation](s1-02-cross-validation/index.qmd)
 - [3. AR, MA, ARMA and ARIMA](s1-03-arima/index.qmd)
 - [4. ARCH and GARCH](s1-04-arch-garch/index.qmd)
-- [5. Spectral analysis and filtering](s1-05-spectral/index.qmd)
+- [5. Spectral analysis](s1-05-spectral/index.qmd)
 
 ## Section 2
 
@@ -16,3 +17,7 @@ title: "Journal"
 - [2. Time series regression](s2-02-ts-regression/index.qmd)
 - [3. State space models](s2-03-state-space/index.qmd)
 - [4. Hidden Markov models](s2-04-hmm/index.qmd)
+
+## AI use
+
+- [AI Use Log](../ai-use-log.qmd)

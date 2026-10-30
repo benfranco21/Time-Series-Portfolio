@@ -8,20 +8,22 @@ website:
   title: "Time Series Portfolio"
   search: true
   back-to-top-navigation: true
+  page-footer:
+    center: "Benjamin Franco · FRNBEN003 · Time Series Analysis 2026"
   navbar:
     left:
       - text: "Home"
         href: index.qmd
       - text: "Projects"
         menu:
-          - text: "Project 1"
-            href: projects/project-01-financial-forecasting/project-01.qmd
-          - text: "Project 2"
-            href: projects/project-02-garch-volatility/project-02.qmd
-          - text: "Project 3"
-            href: projects/project-03-eskom-demand/project-03.qmd
-          - text: "Project 4"
-            href: projects/project-04-state-space/project-04.qmd
+          - text: "Project 1: ARIMA on AAPL"
+            href: projects/project-01-financial-forecasting/summary.qmd
+          - text: "Project 2: GARCH on AAPL"
+            href: projects/project-02-garch-volatility/summary.qmd
+          - text: "Project 3: ETS vs regression on Eskom"
+            href: projects/project-03-eskom-demand/summary.qmd
+          - text: "Project 4: Kalman filter on Eskom"
+            href: projects/project-04-state-space/summary.qmd
       - text: "Journal"
         href: journal/index.qmd
       - text: "Section 1"
@@ -38,14 +40,18 @@ website:
         menu:
           - text: "Overview"
             href: section-2/index.qmd
-          - text: "HMM"
-            href: section-2/hmm.qmd
           - text: "State space"
             href: section-2/state-space.qmd
+          - text: "HMM"
+            href: section-2/hmm.qmd
       - text: "Reflective Commentary"
         href: reflective-commentary.qmd
+      - text: "AI Use Log"
+        href: ai-use-log.qmd
       - text: "References"
         href: references.qmd
+      - text: "Appendix"
+        href: appendix/code-and-data.qmd
 
 format:
   html:

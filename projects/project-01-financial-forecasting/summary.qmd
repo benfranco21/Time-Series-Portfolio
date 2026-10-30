@@ -3,7 +3,7 @@ title: "Project 1 Summary"
 format: html
 ---
 
-**Title:** Financial Forecasting: AR, MA and ARIMA Models on AAPL
+**Title:** Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL.
 
 **Section and topic:** Section 1, AR, MA and ARIMA models
 
@@ -11,7 +11,7 @@ format: html
 
 **Question or aim:** To test whether AR, MA or ARMA terms improve on the simplest model for AAPL daily prices and log returns, whether it is better to forecast the price directly or through the returns, and how forecast accuracy changes between 1, 5 and 20 trading days ahead.
 
-**Data used (and source):** AAPL daily closing prices from [data source], 3 January 2017 to 31 December 2019 (754 trading days). The first 497 days are the training set and the last 257 days are the test set.
+**Data used (and source):** AAPL daily closing prices from the Kaggle data set S&P 500 Stocks: 25 Years of Data (darkmatternet, 2026), 3 January 2017 to 31 December 2019 (754 trading days). The first 497 days are the training set and the last 257 days are the test set.
 
 **Methods used:** ADF and KPSS tests for stationarity, ACF and PACF for identifying candidate models, ARIMA models fitted with arima() and compared with AICc, Ljung-Box tests on the residuals and the squared residuals, rolling-origin cross-validation on the training set (RMSE, MAE and MASE), a test-set comparison with the returns forecast turned into an implied price, and 95% prediction intervals for a 20-day forecast.
 

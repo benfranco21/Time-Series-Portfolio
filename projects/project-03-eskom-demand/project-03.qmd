@@ -16,7 +16,7 @@ daily <- readRDS(here::here("data", "eskom_daily_peak.rds"))
 
 ## Introduction
 
-In Projects 1 and 2 I worked with daily AAPL daily prices and returns. The models found very little structure in the mean of the returns, and the main problem turned out to be volatility that changes over time. This project moves to a series with a lot of structure in the mean. Electricity demand depends on the day of the week, the time of year and public holidays, which makes it a good series for two of the Section 2 methods, exponential smoothing and time series regression. The two approaches handle this structure in different ways. Exponential smoothing updates a level and a seasonal pattern as each new day comes in, while regression describes demand as a fixed function of time and the calendar.
+In Projects 1 and 2 I worked with daily AAPL prices and returns. The models found very little structure in the mean of the returns, and the main problem turned out to be volatility that changes over time. This project moves to a series with a lot of structure in the mean. Electricity demand depends on the day of the week, the time of year and public holidays, which makes it a good series for two of the Section 2 methods, exponential smoothing and time series regression. The two approaches handle this structure in different ways. Exponential smoothing updates a level and a seasonal pattern as each new day comes in, while regression describes demand as a fixed function of time and the calendar.
 
 I use Eskom's daily peak electricity demand from April 2022 to September 2026 and keep the last 365 days as a test year. The data also include Eskom's own day-ahead forecast, which gives a real forecast to compare against, not only simple benchmarks. I compare exponential smoothing models with a time series regression, first fitted by OLS and then with ARMA errors, at one day and seven days ahead.
 
@@ -308,12 +308,12 @@ ggplot(plot_df, aes(x = date)) +
   geom_line(aes(y = observed, colour = "observed")) +
   geom_line(aes(y = fitted,   colour = "fitted (one-step forecast)"), linetype = "dashed") +
   geom_line(aes(y = level,    colour = "level")) +
-  labs(x = NULL, y = "daily peak (MW)", colour = NULL)
+  labs(title = "ETS(A,A,A) fitted values and level, last six weeks of training", x = NULL, y = "daily peak (MW)", colour = NULL)
 ```
 
 The plot shows the last six weeks of the training data. The level moves less than the observed values, because the weekly pattern is taken out of it, and the fitted values add the weekly pattern back on top of the level, so they rise and fall with the weekdays and the weekends. When demand changes suddenly, the fitted value misses on that day and the level catches up on the next day. This shows at the end of the plot, on Heritage Day (24 September 2025). The fitted value misses the drop, the level falls with demand, and the next day's fitted value is then too low when demand recovers.
 
-e
+
 ```{r ets test 1 day}
 y_all <- ts(daily$peak, frequency = 7)
 
@@ -358,7 +358,7 @@ ggplot(bench, aes(x = date)) +
   geom_line(aes(y = ets_aaa, colour = "ETS(A,A,A) forecast"), linetype = "dashed") +
   geom_point(data = subset(bench, outside), aes(y = actual), colour = "red", size = 1.5) +
   facet_wrap(~ panel, ncol = 1, scales = "free_x") +
-  labs(x = NULL, y = "daily peak (MW)", colour = NULL,
+  labs(title = "ETS(A,A,A) one-day-ahead forecasts with 95% intervals, test year", x = NULL, y = "daily peak (MW)", colour = NULL,
        caption = "Shaded band: 95% interval. Red points: actuals outside it.") +
   theme_minimal()
 ```

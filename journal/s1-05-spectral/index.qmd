@@ -7,4 +7,3 @@ listing:
   sort: "date"
 ---
 
-Entry to come

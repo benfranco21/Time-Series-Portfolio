@@ -1,5 +1,6 @@
 ---
 title: "Lecture: Exponential smoothing"
+date: 2026-09-14
 ---
 
 This section was covered in Birgit's lectures, from her Chapter 1 notes and slides. It started with simple exponential smoothing and built up to Holt-Winters and ETS, and it was the method I then used in Project 3.

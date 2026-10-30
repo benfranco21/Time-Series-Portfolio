@@ -11,7 +11,7 @@ format: html
 
 **Question or aim:** To test whether a GARCH(1,1) model removes the volatility clustering left in the residuals of the ARIMA(0,0,0) model from Project 1, and whether it gives better 95% prediction intervals for AAPL daily log returns at 1, 5 and 20 trading days ahead.
 
-**Data used (and source):** AAPL daily closing prices from [data source], 3 January 2017 to 31 December 2019, with the same split as Project 1. The training set has 496 returns, up to 21 December 2018, and the test set has 257 trading days.
+**Data used (and source):** AAPL daily closing prices from the Kaggle data set S&P 500 Stocks: 25 Years of Data (darkmatternet, 2026), 3 January 2017 to 31 December 2019, with the same split as Project 1. The training set has 496 returns, up to 21 December 2018, and the test set has 257 trading days.
 
 **Methods used:** Joint estimation of four ARMA mean equations with a GARCH(1,1) variance, compared with AIC and BIC. Engle's ARCH LM test and the Ljung-Box test on the squared innovations of a constant-mean model. ARCH(1) and GARCH(1,1) models with Student-t innovations, fitted by maximum likelihood with rugarch. Diagnostics on the standardised residuals, weighted Ljung-Box, ARCH LM, Nyblom stability and sign bias tests. Out-of-sample coverage of 95% prediction intervals against ARIMA(0,0,0) at 1, 5 and 20 days, refitting at every test origin, overall and split by forecast volatility.
 

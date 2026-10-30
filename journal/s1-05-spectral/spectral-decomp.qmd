@@ -1,5 +1,6 @@
 ---
 title: "Spectral analysis"
+date: 2026-09-16
 ---
 
 Spectral analysis was another self taught section, as it was not covered in the lectures. I worked through the spectral analysis tutorial we were given from start to finish, running the code and answering each question before opening the answer, and then added my own simulated example at the end.

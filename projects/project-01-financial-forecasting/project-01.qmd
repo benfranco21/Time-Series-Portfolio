@@ -1,5 +1,5 @@
 ---
-title: "Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL - FRNBEN003"
+title: "Financial Forecasting: AR/MA/ARIMA Model Comparison on AAPL."
 format: html
 ---
 ## Introduction
@@ -8,7 +8,9 @@ This is the first project in my portfolio, and it applies the AR, MA and ARIMA m
 
 I model the series in two ways. The first works with the closing price itself. The price is not stationary, so it has to be differenced first, which means an ARIMA model with d = 1. The second works with the daily log return,
 
-r_t = log(P_t) - log(P_{t-1}),
+$$
+r_t = \log(P_t) - \log(P_{t-1}),
+$$
 
 where P_t is the closing price, and fits ARMA models with d = 0. Both forecasts can be turned into a forecast of the price, so on the test set I compare the two branches on the same dollar scale.
 
@@ -20,7 +22,7 @@ This project asks three questions.
 
 The three horizons are the next trading day, one trading week and about one trading month. I use all three because any structure in daily returns would most likely show at the shortest horizon, while differences between modelling the price and modelling the returns could build up as the forecasts are carried further ahead.
 
-The data are AAPL daily closing prices from [data source] between January 2017 and December 2019. I choose the models within each branch using AICc and rolling-origin cross-validation on a training set, and hold the last part of the data back as a test set that I only use at the end to compare the two branches.
+The data are AAPL daily closing prices from the Kaggle data set S&P 500 Stocks: 25 Years of Data (darkmatternet, 2026) between January 2017 and December 2019. I choose the models within each branch using AICc and rolling-origin cross-validation on a training set, and hold the last part of the data back as a test set that I only use at the end to compare the two branches.
 
 ## Define the Series
 ```{r setup}
@@ -87,9 +89,11 @@ The data are split by time and not at random.
 Everything up to and including the choice of model uses only the training set. That covers the exploratory analysis, the stationarity tests, the ACF and PACF, the AICc comparison and the cross-validation. The test set is only used in Compare Models and Forecast and Report, once the models have been chosen.
 
 I use the three years from 2017 to 2019. This gives about two years of daily data to fit and choose the models and a full year to test them on. The training years also include both a calm stretch through 2017 and the sharp fall in price at the end of 2018, so the models are fitted to more than one kind of market.
+
 ## EDA
 
 This section explores the training set only.
+
 ```{r eda-plots}
 train <- train %>%
   mutate(log_close = log(close),
@@ -107,7 +111,7 @@ p_price
 
 ```
 
-We can see the training price starts at about $27 in January 2017 and rises, with some dips, to about $45 by the middle of 2018. It jumps in early August 2018 and peaks near $55 around the start of October 2018, then falls sharply to about $36 by 21 December 2018, the last training day. The level of the price changes a lot over the two years, so it does not have a constant mean. I test this formally in the Stationarity section.
+The training price starts at about $27 in January 2017 and rises, with some dips, to about $45 by the middle of 2018. It jumps in early August 2018 and peaks near $55 around the start of October 2018, then falls sharply to about $36 by 21 December 2018, the last training day. The level of the price changes a lot over the two years, so it does not have a constant mean. I test this formally in the Stationarity section.
 
 
 
@@ -123,7 +127,7 @@ p_returns
 
 ```
 
-We can see the log returns move around zero with no trend. Most days are between about -0.02 and 0.02, but the size of the swings is not the same throughout. Most of 2017 is calm, the swings get larger in February 2018 and again around April and May 2018, and the largest ones are in the last three months of the training set, while the price is falling. The biggest negative return, -0.069, is in early November 2018. Large returns tend to come in groups and so do small ones, which is the volatility clustering listed with the stylised facts of financial returns (course notes, Section 7.3.2).
+The log returns move around zero with no trend. Most days are between about -0.02 and 0.02, but the size of the swings is not the same throughout. Most of 2017 is calm, the swings get larger in February 2018 and again around April and May 2018, and the largest ones are in the last three months of the training set, while the price is falling. The biggest negative return, -0.069, is in early November 2018. Large returns tend to come in groups and so do small ones, which is the volatility clustering listed with the stylised facts of financial returns (course notes, Section 7.3.2).
 
 
 ```{r eda-distribution}
@@ -226,9 +230,9 @@ I tested both series for stationarity with the ADF and KPSS tests. They have opp
 
 The p-values of 0.01 in the output are the smallest value that adf.test() and kpss.test() report, so the true p-values in those two cases are smaller.
 
-For the price the two tests agree. The ADF test does not reject a unit root (p = 0.96) and the KPSS test rejects stationarity (p < 0.01). This matches the slow decay of the price ACF in Explore. I therefore difference the price once, so the price branch uses ARIMA(p, 1, q) models.
+For the price the two tests agree. The ADF test does not reject a unit root (p = 0.96) and the KPSS test rejects stationarity (p < 0.01). This matches the slow decay of the price ACF in EDA. I therefore difference the price once, so the price branch uses ARIMA(p, 1, q) models.
 
-For the returns the ADF test rejects a unit root (p < 0.01). The KPSS test rejects stationarity at the 5% level but not at the 1% level (p = 0.03). The returns plot in Explore has no trend and stays around zero, while the size of the swings changes over time. I put the borderline KPSS result down to this changing variance and not to a change in the mean, and treat the returns as stationary in the mean. The returns branch therefore uses ARMA(p, q) models with no further differencing.
+For the returns the ADF test rejects a unit root (p < 0.01). The KPSS test rejects stationarity at the 5% level but not at the 1% level (p = 0.03). The returns plot in EDA has no trend and stays around zero, while the size of the swings changes over time. I put the borderline KPSS result down to this changing variance and not to a change in the mean, and treat the returns as stationary in the mean. The returns branch therefore uses ARMA(p, q) models with no further differencing.
 
 The two branches model different series, one in dollars and one in log returns, so their AICc values cannot be compared with each other. I use AICc only to choose between models within a branch, and compare the two branches on the test set using RMSE on the price scale.
 
@@ -367,7 +371,7 @@ lb_returns_sq <- Box.test(residuals(fit_r_000)^2, lag = 10, type = "Ljung-Box", 
 print(lb_returns_sq)
 ```
 
-I then applied the same test to the squared residuals of the returns model, which looks at the size of the errors and not their sign. At lag 10 this gives X-squared = 74.81 with p = 5.2e-12, far stronger than the test on the residuals themselves. The size of the errors is still correlated over time, so that large errors tend to follow large errors and small errors follow small errors. This is the volatility clustering seen in Explore. An ARIMA model assumes the error variance is the same every day, so its prediction intervals have one fixed width, which is too wide in calm periods and too narrow in volatile ones (course notes, Section 7.3.3).
+I then applied the same test to the squared residuals of the returns model, which looks at the size of the errors and not their sign. At lag 10 this gives X-squared = 74.81 with p = 5.2e-12, far stronger than the test on the residuals themselves. The size of the errors is still correlated over time, so that large errors tend to follow large errors and small errors follow small errors. This is the volatility clustering seen in EDA. An ARIMA model assumes the error variance is the same every day, so its prediction intervals have one fixed width, which is too wide in calm periods and too narrow in volatile ones (course notes, Section 7.3.3).
 
 I keep both models for forecasting. The leftover autocorrelation in the residuals is small and sits at long lags that none of the candidate models could reach. The changing variance is a bigger problem, but no model in this class can represent it, so I note it as a limitation and come back to it in the Discussion.
 

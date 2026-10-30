@@ -1,5 +1,6 @@
 ---
-title: "Lecture: AR, MA, ACF/PACF and ARIMA (slides 80 to 125)"
+title: "Lecture: AR, MA, ACF/PACF and ARIMA"
+date: 2026-08-24
 ---
 
 Today's lecture covered slides 80 to 125. We started with AR and MA models on their own, then moved on to how to pick between them using the ACF and PACF, and finished with how they combine into ARIMA.

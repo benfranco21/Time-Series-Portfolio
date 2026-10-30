@@ -1,0 +1,89 @@
+---
+title: "Appendix: Code and Data"
+---
+
+All the code is shown inside each project and tutorial page, and the full source is in the repository. This appendix lists where each page gets its data, how to get the two raw data files, and how to reproduce the whole site.
+
+## Overview
+
+| Page | Source file | Data | Key packages | Seed |
+|---|---|---|---|---|
+| Project 1: ARIMA on AAPL | `projects/project-01-financial-forecasting/project-01.qmd` | `data/sp500_stocks.csv` | readr, dplyr, tsibble, feasts, ggplot2, tseries | 2026 |
+| Project 2: GARCH on AAPL | `projects/project-02-garch-volatility/project-02.qmd` | `data/sp500_stocks.csv` | readr, dplyr, rugarch, FinTS, ggplot2 | 2026 |
+| Project 3: ETS vs regression on Eskom | `projects/project-03-eskom-demand/project-03.qmd` | `data/eskom_daily_peak.rds` | dplyr, ggplot2, forecast, lubridate | 2026 |
+| Project 4: Kalman filter on Eskom | `projects/project-04-state-space/project-04.qmd` | `data/eskom_daily_peak.rds` and `projects/project-03-eskom-demand/bench_p3.rds` | dplyr, ggplot2, forecast, lubridate, dlm | 2026 |
+| Practical 1: time series objects in R | `section-1/fundamentals.qmd` | `data/sp500_stocks.csv` | readr, dplyr, tsibble, feasts, ggplot2 | none |
+| R lab: fitting GARCH models | `section-1/arch-garch.qmd` | Tbrate and SP500 from the Ecdat package | tseries, fGarch, Ecdat | none |
+| Spectral analysis | `section-1/Spectral_Analysis.qmd` | simulated in the page | tidyverse, patchwork | set in each example |
+| State space models tutorial | `section-2/state-space.qmd` | simulated in the page | tidyverse, patchwork | 5 |
+| Hidden Markov models | `section-2/hmm.qmd` | values given in the tutorial questions | tidyverse | none |
+
+All pages also use the here package to build file paths from the project root. The helper functions that the projects source are in the `R/` folder of each project.
+
+## Data sources
+
+Neither raw data file can be downloaded by a script, so they have to be fetched by hand.
+
+The files `data/eskom_daily_peak.rds` and `projects/project-03-eskom-demand/bench_p3.rds` are already in the repository, so a fresh clone can render Projects 3 and 4 without the Eskom CSV file. The CSV file and the script `projects/project-03-eskom-demand/R/load_eskom.R` are only needed to rebuild the .rds file from the raw data. A fresh clone does need `data/sp500_stocks.csv` for Projects 1 and 2 and the fundamentals practical.
+
+### S&P 500 daily prices
+
+The share prices come from the Kaggle data set "S&P 500 Stocks: 25 Years of Data (Updated Daily)" by darkmatternet, version 140, the version used for these results, at <https://www.kaggle.com/datasets/darkmatternet/s-and-p-500-stocks-25-years-of-data-updated-daily>. I accessed it on 17 August 2026. I use the daily closing price of AAPL from 3 January 2017 to 31 December 2019. The data set is updated daily, so a newer version may differ slightly from the one I used.
+
+1. Sign in to Kaggle (a free account is needed).
+2. Open the data set page at the link above.
+3. Choose version 140 in the version list.
+4. Download the data and unzip it.
+5. Save the file of daily prices as `data/sp500_stocks.csv` in the repository.
+
+### Eskom hourly demand
+
+The electricity data is file ESK19847 from the Eskom Data Portal. It holds the hourly RSA Contracted Demand and RSA Contracted Forecast from 1 April 2022 to 27 September 2026. Eskom supplied it on request through the data request form at <https://www.eskom.co.za/dataportal/data-request-form/>, and I received it on 30 September 2026.
+
+1. Open the data request form at the link above.
+2. Request the hourly RSA Contracted Demand and RSA Contracted Forecast for 1 April 2022 to 27 September 2026.
+3. When the file arrives, save it as `data/ESK19847.csv` in the repository.
+4. To rebuild the daily series, run `Rscript projects/project-03-eskom-demand/R/load_eskom.R` from the project root. It takes the daily maximum of the hourly demand and saves it as `data/eskom_daily_peak.rds`.
+
+### Tbrate and SP500
+
+The ARCH and GARCH tutorial uses the Tbrate and SP500 data sets from the Ecdat package, so they need no download.
+
+## Data statement
+
+Both data sets are aggregate data, national electricity demand and public share prices. They contain no personal information, so POPIA does not apply and no consent was needed.
+
+## Repository
+
+The source is at <https://github.com/benfranco21/Time-Series-Portfolio>.
+
+<!-- TODO: add the tag or commit of the submitted version -->
+
+## How to reproduce
+
+1. Clone the repository: `git clone https://github.com/benfranco21/Time-Series-Portfolio.git`.
+2. Install R, Quarto and the packages. There is no renv.lock file, so install the packages with one call:
+
+    ```r
+    install.packages(c("readr", "dplyr", "tsibble", "feasts", "ggplot2", "here",
+                       "tseries", "rugarch", "FinTS", "forecast", "lubridate",
+                       "dlm", "tibble", "tidyverse", "patchwork", "fGarch",
+                       "Ecdat", "rmarkdown", "knitr"))
+    ```
+
+3. Place `data/sp500_stocks.csv` as described above. Add `data/ESK19847.csv` only if you want to rebuild the Eskom series.
+4. Run `Rscript check_data.R` from the project root. It checks that the data files are in place, tells you what to do if one is missing, and rebuilds `data/eskom_daily_peak.rds` only if it is missing and the Eskom CSV file is there.
+5. Run `quarto render` from the project root. Project 4 reads `bench_p3.rds`, which Project 3 writes, so if Project 3 is changed it must be rendered before Project 4.
+
+## Session information
+
+The R version and the versions of the packages listed above, as used to render this site, are shown below.
+
+```{r}
+#| echo: false
+pkgs <- c("readr", "dplyr", "tsibble", "feasts", "ggplot2", "here", "tseries",
+          "rugarch", "FinTS", "forecast", "lubridate", "dlm", "tibble",
+          "tidyverse", "patchwork", "fGarch", "Ecdat")
+invisible(suppressPackageStartupMessages(lapply(pkgs, library, character.only = TRUE)))
+sessionInfo()
+```

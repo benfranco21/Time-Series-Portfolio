@@ -1,0 +1,51 @@
+.stats-row { margin: 1.5rem 0 2rem 0; }
+.stat {
+  text-align: center;
+  padding: 0.8rem;
+  border-radius: 10px;
+  background: #f3f6fa;
+}
+.stat .num {
+  display: block;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1f4e79;
+}
+
+.home-card {
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  background: #fff;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.home-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+.home-card img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.home-card h3 { margin-top: 0.8rem; font-size: 1.15rem; }
+.home-card h3 a { text-decoration: none; }
+.small-card h3 { margin-top: 0; }
+
+.tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  margin-right: 4px;
+  border-radius: 999px;
+  background: #eaf1f8;
+  color: #1f4e79;
+}
+
+/* dark mode (Quarto adds .quarto-dark to body) */
+.quarto-dark .home-card { background: #1e2329; border-color: #343a40; }
+.quarto-dark .home-card:hover { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); }
+.quarto-dark .stat { background: #232a33; }
+.quarto-dark .stat .num { color: #8fb8e0; }
+.quarto-dark .tag { background: #26323f; color: #8fb8e0; }
